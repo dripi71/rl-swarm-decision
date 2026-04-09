@@ -1,14 +1,20 @@
-import heapq;
 
-class PriorityQueue:
+import bisect
+from config.constants import QObjectIndices
+
+class Priority_Q:
     def __init__(self):
-        self.queue = []
+        self.Q = []
 
-    def push(self, item):
-        self.queue.append(item)
+    def add(self, item):        
+        # list is sorted in descending order, so next action is retrieved in O(1) by pop(0)
+        index = bisect.bisect_left(self.Q, -1*item[QObjectIndices.ACTIONTIME], key= lambda x : -1*x[QObjectIndices.ACTIONTIME])
+        self.Q.insert(index, item)
 
     def pop(self):
-        return self.queue.pop(0)
+        if self.is_empty():
+            return None
+        return self.Q.pop(0)
 
     def is_empty(self):
-        return len(self.queue) == 0
+        return len(self.Q) == 0

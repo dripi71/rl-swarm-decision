@@ -4,14 +4,20 @@
 -> evtl binary search und python list
 Payload dann sowas : [AgentId, Aktion(Id), zeit (zu filternder key)]
 
-[type AgentId, type Action, type Start]
+[type AgentId, type ActionDone, type StepsDone]
 
 **Aktionen**:
 
 - [AgentId, LEAVE_NEST, xxxxSteps]: Entferne Agent von der Pinlist, berechne zu welcher Location gegangen werden soll (RL) berechne ttSteps ->[AgentId, SAMPLING, xxxxSteps + ttSteps].
 - [AgentId, SAMPLING, xxxxSteps]: berechne Sampling Länge slSteps (RL), berechne events (muss deterministisch sein! bzw die anderen roboter die samplen müssen auch die gleichen events erfahren), pushe auf Q [AgentId, GOTO_NEST, xxxxSteps + slSteps]
+  -> evtl Lösung: eine location event queue. Wenn zeit ausgelöst, dann hitte alle agents die in der location sind. Oder direkt in die haupt prio q einbauen
 - [AgentId, GOTO_NEST, xxxxSteps]: berechne traveldauer tdSteps, füge [AgentId, NESTING, xxxxSteps + tdSteps]
 - [AgentId, NESTING, xxxxSteps]: Füge Agent zur pinnwand hinzu, berechne Nesting time ntSteps, adde zur Q: [AgentId, LEAVE_NESt xxxxSteps + ntSteps]
+
+- [AgentId, READYFORPREDICTION, xxxSteps]
+  -> States unterscheiden in internal events und decision events
+
+!!!Eventuell muss ich es doch so machen, dass die Aktion die vergangene ist. Die nächste aktion wird vom RL gewählt, ich muss aber wissen was davor getan wurde (zb wegen aus Nest pinnwand lösen!). Diese Information ist aber auch für den Agent wichtig!
 
 **Observation Vector**
 
@@ -22,6 +28,7 @@ Payload dann sowas : [AgentId, Aktion(Id), zeit (zu filternder key)]
 - Die Bayesianischen Hyperparameter (a,b): Anstatt nur die Rohdaten zu senden, gib dem Agenten direkt die aktuellen Werte von a und b für jede Zone.
 - Die "Stimmung" im Nest (Votes): Der Agent muss wissen, wie viele Stimmen aktuell für Blau und wie viele für Rot im Nest vorhanden sind. Ohne diese Information kann er keinen kollektiven Konsens lernen
 - Eigener aktueller Vote: Welches Gebiet hält der Agent momentan selbst für das sicherere?
+- action masking (brauche ich evtl doch nicht weil die agenten frei entscheiden sollen ob sie nach rot sampling direkt nochmal rot samplen wollen)
 
 - **Action Space**
 
