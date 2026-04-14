@@ -1,6 +1,6 @@
 experiment:
   num_agents: 10
   num_locations: 2
-  lambda_range: !!python/tuple [1, 10]
+  lambda_range: [1, 10]
   training: true
   travel_time: 10

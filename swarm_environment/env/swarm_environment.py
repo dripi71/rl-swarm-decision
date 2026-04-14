@@ -119,7 +119,7 @@ class SwarmDecisionEnvironment(AECEnv):
             # agents is reserved by pettingzoo, only list ids here
             self.agents.append(i)
             # create own agent object list
-            self.agent_objects.append(Agent(i))
+            self.agent_objects.append(Agent(i, self.config))
             self.prio_Q.add([i, ActionTypes.NESTING_FINISHED, 0])
         
         for i in range(self.config["experiment"]["num_locations"]):
