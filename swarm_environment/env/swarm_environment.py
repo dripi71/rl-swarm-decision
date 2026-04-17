@@ -47,22 +47,25 @@ class SwarmDecisionEnvironment(AECEnv):
         self.createLocationsAndAgents()
 
     def step(self, action):
-
-        # [AgentId, EventType, ActionTime]        
+        # the step method is called, when an agent needs a prediction what to do next
+        # e.g. the agent has either just finished nesting or sampling
+        # action : [next_location, location_duration]
+        # Prio Q : [AgentId, EventType, ActionTime]        
         agent_id = self.agent_selection
         agent = self.get_agent_by_id(agent_id)
-        agent.current_location = agent.next_location
 
-        if(agent.current_location == self.nest_loc_index):
+        current_location = agent.next_location
+
+        if(current_location == self.nest_loc_index):
             self.nesting_agents.remove(agent)
-        elif agent.current_location in self.locations:
-            self.sampling_agents[agent.current_location].remove(agent)
+        elif current_location in self.locations:
+            self.sampling_agents[current_location].remove(agent)
 
         agent.next_location = action[PredictionIndices.LOCATION]
         # Predicted stay time for the next location
         agent.next_location_duration = action[PredictionIndices.DURATION]
 
-        traveltime = self.calculate_travel_time(agent.current_location, agent.next_location)
+        traveltime = self.calculate_travel_time(current_location, agent.next_location)
 
         if(agent.next_location == self.nest_loc_index):
             self.prio_Q.add([agent.id, ActionTypes.NESTING, self.current_step + traveltime])
@@ -75,7 +78,6 @@ class SwarmDecisionEnvironment(AECEnv):
 
         next_event = self.prio_Q.pop()
         while(not self.needs_prediction(next_event)):
-            self.current_step = next_event[QObjectIndices.ACTIONTIME]
             self.process_deterministic_event(next_event)
             next_event = self.prio_Q.pop()
 
@@ -91,8 +93,12 @@ class SwarmDecisionEnvironment(AECEnv):
         return self.action_spaces[agent]
     
     def get_observation(self, agent_id):
+
+        ##!! hier stimmt was nicht
+
         agent = self.get_agent_by_id(agent_id)
         num_locations = self.config["experiment"]["num_locations"]
+        # one hot encoding for current location of agent
         loc_obs = np.zeros((num_locations + 1), dtype=np.float32)
         loc_obs[agent.next_location] = 1.0
         quality_estimates = np.zeros(num_locations, dtype=np.float32)
@@ -104,7 +110,8 @@ class SwarmDecisionEnvironment(AECEnv):
         if (agent.current_vote is not None):
             self_vote[agent.current_vote] = 1.0
         nest_votes_ratio = np.zeros(num_locations, dtype=np.float32)
-        if( agent.next_location == self.nest_loc_index):
+        # if the agent is currently in the nest, show opinions of other nesting agents
+        if (agent.next_location == self.nest_loc_index):
             total_nest_agents = len(self.nesting_agents)
             if total_nest_agents > 0:
                 for nest_agent in self.nesting_agents:
@@ -125,7 +132,7 @@ class SwarmDecisionEnvironment(AECEnv):
         
         for i in range(self.config["experiment"]["num_locations"]):
             self.locations.append(i)
-            delay = np.random.exponential(scale=1.0 / self.lambdas[i])
+            delay = round(np.random.exponential(scale=1.0 / self.lambdas[i]))
             self.prio_Q.add([i, ActionTypes.LOCATION_EVENT, self.current_step + delay])
         
         # Pop the first event to set the initial agent selection
@@ -138,6 +145,8 @@ class SwarmDecisionEnvironment(AECEnv):
         pass
 
     def needs_prediction(self, event):
+        # The agent only needs a prediciton if it finished nesting or sampling
+        # otherwise the next step(s) are deterministic (e.g. traveling to the location)
         return event[QObjectIndices.EVENTTYPE] in [ActionTypes.NESTING_FINISHED, ActionTypes.SAMPLING_FINISHED]
     
     def calculate_travel_time(self, location1, location2):
@@ -157,11 +166,12 @@ class SwarmDecisionEnvironment(AECEnv):
         agent = self.get_agent_by_id(id)
         self.sampling_agents[agent.next_location].append(agent)
 
-    def process_deterministic_event(self, Qevent):
+    def process_deterministic_event(self, event):
 
-        current_agent_id = Qevent[QObjectIndices.AGENTID]
+        self.current_step = event[QObjectIndices.ACTIONTIME]
+        current_agent_id = event[QObjectIndices.AGENTID]
 
-        match(Qevent[QObjectIndices.EVENTTYPE]):
+        match(event[QObjectIndices.EVENTTYPE]):
             case ActionTypes.NESTING:
                 self.add_agent_to_nest(current_agent_id)
                 next_location_duration = self.get_agent_by_id(current_agent_id).next_location_duration
@@ -175,8 +185,9 @@ class SwarmDecisionEnvironment(AECEnv):
                 nextEvent = [current_agent_id, ActionTypes.SAMPLING_FINISHED, self.current_step + next_location_duration]
                 self.prio_Q.add(nextEvent)
             case ActionTypes.LOCATION_EVENT:
-                location_id = Qevent[QObjectIndices.AGENTID]
+                location_id = event[QObjectIndices.AGENTID]
                 for agent in self.sampling_agents[location_id]:
                     agent.events_at_location[location_id] += 1
-                delay = np.random.exponential(scale=1.0 / self.lambdas[location_id])
+                    # add penalty
+                delay = round(np.random.exponential(scale=1.0 / self.lambdas[location_id]))
                 self.prio_Q.add([location_id, ActionTypes.LOCATION_EVENT, self.current_step + delay])

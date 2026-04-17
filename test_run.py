@@ -34,6 +34,9 @@ for i in range(20):
     print(f"\n[World Time: {env.current_step:.2f}] Action Prompt:")
     print(f"-> Agent {agent_id} wurde gefragt und wählt: {['Cave 0', 'Cave 1', 'Nest'][random_destination]} für {random_duration} Steps")
     
+    print(f"Neue Prio Q:")
+    print(env.prio_Q.print())
+
     obs = env.step(action)
     print(f"Neue Observation erhalten: {obs}")
 

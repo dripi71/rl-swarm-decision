@@ -1,8 +1,7 @@
-# Q:
+TODO:
+Add reward system
 
--> am beste doch kein heap weil nicht stabil und wenn man in eine sortierte liste einfügen möchte es bessere alternativen gibt
--> evtl binary search und python list
-Payload dann sowas : [AgentId, Aktion(Id), zeit (zu filternder key)]
+# Q:
 
 [type AgentId, type ActionDone, type StepsDone]
 
@@ -37,6 +36,8 @@ Payload dann sowas : [AgentId, Aktion(Id), zeit (zu filternder key)]
 - Action space wäre dann: [[Location1, Location2, ..., LocationN, NEST], maxWait]
 
 # Zu klärende Fragen:
+
+# Eventuell besser das nest an stelle 0 ist? dann lernen die agenten besser dass 0 eine spezielle operation ist, sonst ist nest location immer ein verschiedner wert (index: num_loctions)
 
 # - Was wenn 2 Aktionen zur gleichen Zeit? zb ein roboter leaved das nest und einer entered, wird dann zuerst geentered ( noch eine obs mehr im nest) oder geleaved?
 
