@@ -19,7 +19,7 @@ print(f"Agents: {config['experiment']['num_agents']}")
 print(f"Locations: {num_locations}")
 print("-" * 50)
 
-for i in range(20):
+for i in range(200):
     agent_id = env.agent_selection
     
     random_destination = np.random.randint(0, num_locations + 1)

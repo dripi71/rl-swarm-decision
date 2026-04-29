@@ -16,8 +16,6 @@ Add reward system
 - [AgentId, READYFORPREDICTION, xxxSteps]
   -> States unterscheiden in internal events und decision events
 
-!!!Eventuell muss ich es doch so machen, dass die Aktion die vergangene ist. Die nächste aktion wird vom RL gewählt, ich muss aber wissen was davor getan wurde (zb wegen aus Nest pinnwand lösen!). Diese Information ist aber auch für den Agent wichtig!
-
 **Observation Vector**
 
 - für jede Location [timesteps,events]
@@ -41,4 +39,4 @@ Add reward system
 
 # - Was wenn 2 Aktionen zur gleichen Zeit? zb ein roboter leaved das nest und einer entered, wird dann zuerst geentered ( noch eine obs mehr im nest) oder geleaved?
 
-# - wie genau soll die confidence berechnung durchgeführt werden
+# - wie genau soll die confidence berechnung durchgeführt werden bzw wann soll terminiert werden??

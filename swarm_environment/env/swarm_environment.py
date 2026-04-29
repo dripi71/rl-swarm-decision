@@ -24,15 +24,25 @@ class SwarmDecisionEnvironment(AECEnv):
         self.current_step = 0
         # The nest location index is the last index (num_locations because 0 is location 1)
         self.nest_loc_index = self.config["experiment"]["num_locations"]
-        # action space: 1. Variable: 0 - num_locations: wohin soll als nächstes gegangen werden loc1, loc2, ..., locN, NEST
-        #               2. Variable: 0 - max_wait: wie lange soll gewartet werden
-        self.action_spaces = gym.spaces.Discrete(self.config["experiment"]["num_locations"] + 1)
-        # observation space: num_locations + nest + confidence + votes
-
-        # muss noch angepasst werden
-        self.observation_spaces = gym.spaces.Box(low=0, high=1, shape=(self.config["experiment"]["num_locations"] + 1,))
-        
         self.createLocationsAndAgents()
+
+        self.rewards = { agent: 0 for agent in self.agents}
+        self.terminations = { agent: False for agent in self.agents}
+        self.truncations = { agent: False for agent in self.agents}
+        self.infos = { agent: {} for agent in self.agents}
+
+        # action space: 1. Variable: 0 - num_locations: (loc1, ..., locN, NEST)
+        self.action_spaces = {agent: gym.spaces.MultiDiscrete([self.config["experiment"]["num_locations"] + 1, self.config["experiment"]["max_wait"] + 1]) for agent in self.agents}
+        
+        # observation space: loc_obs (N+1) + quality_estimates (N) + self_vote (N) + nest_votes_ratio (N) = 4*N + 1
+        obs_dim = 4 * self.config["experiment"]["num_locations"] + 1
+        self.observation_spaces = {
+            agent: gym.spaces.Box(low=0.0, high=1.0, shape=(obs_dim,), dtype=np.float32) 
+            for agent in self.agents
+        }
+        
+        # Wichtig für PettingZoo / RLlib: possible_agents definieren!
+        self.possible_agents = self.agents[:]
 
     def reset(self, seed=None, options=None):
         if seed is not None:
@@ -45,6 +55,10 @@ class SwarmDecisionEnvironment(AECEnv):
         self.locations = []
         self.sampling_agents = [[] for _ in range(self.config["experiment"]["num_locations"])]
         self.createLocationsAndAgents()
+        self.rewards = { agent: 0 for agent in self.agents}
+        self.terminations = { agent: False for agent in self.agents}
+        self.truncations = { agent: False for agent in self.agents}
+        self.infos = { agent: {} for agent in self.agents}
 
     def step(self, action):
         # the step method is called, when an agent needs a prediction what to do next
@@ -74,7 +88,11 @@ class SwarmDecisionEnvironment(AECEnv):
 
 
         # Hier kommt dann das reward system rein
-
+        ## Reward system
+        # Penalty for travel time
+        self.rewards[agent.id] -= traveltime * self.config["rewards"]["penalty_per_travel_timestep"]
+        # Reward for sampling time
+        self.rewards[agent.id] += agent.next_location_duration * self.config["rewards"]["reward_per_sampling_timestep"]
 
         next_event = self.prio_Q.pop()
         while(not self.needs_prediction(next_event)):
@@ -84,7 +102,6 @@ class SwarmDecisionEnvironment(AECEnv):
         # Next event that needs a prediction
         self.agent_selection = next_event[QObjectIndices.AGENTID]
         self.current_step = next_event[QObjectIndices.ACTIONTIME]
-        return self.get_observation(self.agent_selection)
         
     def observation_space(self, agent):
         return self.observation_spaces[agent]
@@ -92,7 +109,7 @@ class SwarmDecisionEnvironment(AECEnv):
     def action_space(self, agent):
         return self.action_spaces[agent]
     
-    def get_observation(self, agent_id):
+    def observe(self, agent_id):
 
         ##!! hier stimmt was nicht
 
@@ -188,6 +205,20 @@ class SwarmDecisionEnvironment(AECEnv):
                 location_id = event[QObjectIndices.AGENTID]
                 for agent in self.sampling_agents[location_id]:
                     agent.events_at_location[location_id] += 1
-                    # add penalty
+                    self.rewards[agent.id] -= self.config["rewards"]["penalty_per_event"]
                 delay = round(np.random.exponential(scale=1.0 / self.lambdas[location_id]))
                 self.prio_Q.add([location_id, ActionTypes.LOCATION_EVENT, self.current_step + delay])
+
+    def state(self):
+        num_locations = self.config["experiment"]["num_locations"]
+        num_agents = self.config["experiment"]["num_agents"]
+        
+        agent_counts = np.zeros(num_locations + 1, dtype=np.float32)
+        for i in range(num_locations):
+            agent_counts[i] = len(self.sampling_agents[i]) / num_agents
+        agent_counts[self.nest_loc_index] = len(self.nesting_agents) / num_agents
+        
+        true_lambdas = np.array(self.lambdas, dtype=np.float32)
+        
+        global_state = np.concatenate([agent_counts, true_lambdas])
+        return global_state

@@ -1,0 +1,37 @@
+Da du in deiner experiments/experiment.py die RLLib-Bibliothek und dort den PPO-Algorithmus (PPOConfig) verwendest, hast du den Actor-Critic-Ansatz eigentlich schon "kostenlos" integriert. PPO (Proximal Policy Optimization) ist nämlich ein Actor-Critic-Algorithmus.
+
+RLlib nimmt dir hier extrem viel Arbeit ab. Du musst die neuronalen Netze für den Actor und den Critic nicht selbst programmieren.
+
+Hier ist die genaue Erklärung, wo und wann was passiert:
+
+1. Was machen Actor und Critic?
+Der Actor (das Policy-Netzwerk): Er ist der "Entscheider". Er bekommt die Observation eines Agenten als Input und gibt als Output Wahrscheinlichkeiten für die möglichen Aktionen zurück. Er lernt das Verhalten.
+Der Critic (das Value-Netzwerk): Er ist der "Kritiker" oder "Bewerter". Er bekommt ebenfalls Observations (oder beim "Centralized Critic" in MAPPO auch globale Infos) und versucht, den erwarteten zukünftigen Reward (die "Vorteilhaftigkeit" oder den Value) vorherzusagen.
+2. Wo wird das alles erzeugt?
+Das passiert völlig automatisch in der Zeile algo = config.build() in deiner experiment.py.
+
+RLlib schaut sich via ParallelPettingZooEnv deinen PettingZoo-Wrapper an und liest dort observation_space und action_space aus (SwarmDecisionEnvironment).
+Basierend auf den Größen (Shapes) dieser Spaces baut RLlib intern PyTorch-Netzwerke für Actor und Critic auf.
+3. Wann wird der Actor/Critic aufgerufen und wann machen sie was?
+Das alles wird ausgelöst, wenn du in deiner Schleife algo.train() aufrufst. Ein Aufruf von train() ist ein gesamter Iterationszyklus, in dem folgendes passiert:
+
+Schritt A: Daten sammeln (Rollouts) -> Der Actor entscheidet
+RLlib ruft im Hintergrund env.reset() auf deiner Swarm-Environment auf und erhält die Start-Observations.
+Actor-Aufruf: RLlib füttert diese ersten Observations in sein Actor-Netzwerk. Das Netzwerk berechnet Aktionen für alle deine Agenten auf einmal.
+RLlib führt diese Aktionen in deiner Simulation aus, indem es env.step({agent1: action, agent2: action, ...}) aufruft.
+Deine Umgebung aktualisiert die Welt (bspw. Agenten fliegen zum Nest, Zeit vergeht, Priority Queue Events triggern) und gibt als Feedback die neuen Observations, Rewards, terminated und truncated zurück.
+Schritt 2–4 wiederholt sich so lange, bis die Episode vorbei ist oder genug Schritte ("rollout length") gesammelt wurden.
+Schritt B: Bewertung -> Der Critic evaluiert
+Jetzt, wo RLlib einen Haufen Spielzüge (Trajectories) gesammelt hat, kommt der Critic ins Spiel: 6. Critic-Aufruf: Der Critic bewertet alle gesammelten Zustände und schaut: "Wie viel Reward hätte ich von hier an noch erwartet?" 7. Er vergleicht seine Vorhersage mit dem tatsächlichen Reward, den dein env.step() zurückgegeben hat. Die Differenz nennt man den Advantage (Vorteil). War eine Aktion besser als das, was der Critic erwartet hat? (Positiver Advantage).
+
+Schritt C: Lernen -> Backpropagation
+Jetzt wird gelernt: War der Advantage positiv, wird der Actor so aktualisiert (Netzwerkgewichte angepasst), dass er diese Aktion in Zukunft häufiger wählt.
+War die Aktion schlechter als erwartet (negativer Advantage), wird der Actor bestraft und wird die Aktion seltener wählen.
+Der Critic wird ebenfalls trainiert, damit seine Vorhersagen für zukünftigen Reward in der nächsten Iteration genauer werden.
+Zusammenfassung für deinen Code
+Als Entwickler der Umgebung musst du dich beim eigentlichen Actor-Critic-Lernprozess um nichts mehr kümmern! Dein einziger Job ist in deiner Datei swarm_environment.py:
+
+Dem Actor im reset() und step() die nötigen relevanten Observations bereitzustellen (Wer bin ich? Wo bin ich? Welche Infos habe ich?).
+Dem Actor über den action_space mitzuteilen, welche Entscheidungen er treffen darf.
+Über den Reward (Rückgabewert von step()) präzise Feedback zu geben, ob seine Aktionen nützlich waren oder nicht.
+Wenn du echtes MAPPO (Multi-Agent PPO) mit einem Centralized Critic nutzen möchtest (wo der Critic den globalen Weltenstatus sieht, der Actor aber nur limitierte Sicht hat), müssten wir den RLLib-PPO-Katalog leicht anpassen. Momentan nutzt du PPO mit Shared Policies (Standard-IPPO). Soll ich dir zeigen, wie du das ggf. auf centralized configurationen anpasst?

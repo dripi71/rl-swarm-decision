@@ -1,7 +1,7 @@
 import yaml
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.tune.registry import register_env
-from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
+from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from swarm_environment.env.swarm_environment import SwarmDecisionEnvironment
 
 
@@ -11,7 +11,12 @@ class Experiment:
             self.config = yaml.safe_load(f)
 
     def create_env(self, env_config):
-        return ParallelPettingZooEnv(SwarmDecisionEnvironment(env_config))
+        with open("config/configuration.yaml", "r") as f:
+            config = yaml.safe_load(f)
+        # Zum Testen einfach Dummy Lambdas mitgeben
+        lambdas = [0.1, 0.8]
+        env = SwarmDecisionEnvironment(config, lambdas)
+        return PettingZooEnv(env)
 
     def run(self):
         training = self.config["experiment"]["training"]
