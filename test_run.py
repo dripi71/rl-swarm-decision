@@ -1,6 +1,7 @@
 import yaml
 from swarm_environment.env.swarm_environment import SwarmDecisionEnvironment
 import numpy as np
+from pettingzoo.test import api_test
 
 with open("config/configuration.yaml", "r") as f:
     config = yaml.safe_load(f)
@@ -12,32 +13,37 @@ if num_locations >= 2:
 
 print("--- Initializing Swarm Environment ---")
 env = SwarmDecisionEnvironment(config, lambdas)
+api_test(env, num_cycles=1000)
+
+
 env.reset()
 
-print("Environment loaded successfully!")
-print(f"Agents: {config['experiment']['num_agents']}")
-print(f"Locations: {num_locations}")
-print("-" * 50)
-
-for i in range(200):
+for i in range(10):
     agent_id = env.agent_selection
     
-    random_destination = np.random.randint(0, num_locations + 1)
-    random_duration = np.random.randint(10, 50)
+    obs, reward, termination, truncation, info = env.last()
     
-    agent_obj = env.get_agent_by_id(agent_id)
-    if np.random.random() < 0.3:
-        agent_obj.current_vote = np.random.randint(0, num_locations)
+    print(f"\n[World Time: {env.current_step:.2f}] Agent {agent_id} ist an der reihe")
+    print(f"Aktuelle Observation erhalten: {obs}")
+    
+    if termination or truncation:
+        action = None
+        print(f"Agent {agent_id} hat terminiert")
+    else:
+        random_destination = np.random.randint(0, num_locations + 1)
+        random_duration = np.random.randint(10, 50)
+        
+        agent_obj = env.get_agent_by_id(agent_id)
+        if np.random.random() < 0.3:
+            agent_obj.current_vote = np.random.randint(0, num_locations)
 
-    action = [random_destination, random_duration]
+        action = [random_destination, random_duration]
+        
+        print(f"Action Prompt: Agent wählt {random_destination} für {random_duration} Steps")
     
-    print(f"\n[World Time: {env.current_step:.2f}] Action Prompt:")
-    print(f"-> Agent {agent_id} wurde gefragt und wählt: {['Cave 0', 'Cave 1', 'Nest'][random_destination]} für {random_duration} Steps")
-    
-    print(f"Neue Prio Q:")
+    print(f"Prio Q:")
     print(env.prio_Q.print())
 
-    obs = env.step(action)
-    print(f"Neue Observation erhalten: {obs}")
+    env.step(action)
 
-print("\n🎉 Test Run was completely successful! No crashes!")
+print("Test run complete!")
