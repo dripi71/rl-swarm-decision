@@ -45,17 +45,26 @@ class Experiment:
         )
 
         algo = config.build_algo()
-        for i in range(60):
+
+        if self.config["experiment"]["load_checkpoint"]:
+            checkpoint_path = os.path.abspath(self.config["experiment"]["test_run_name"])
+            algo.restore(checkpoint_path)
+            print(f"Checkpoint loaded from: {checkpoint_path}")
+
+
+        training_iterations = 50
+
+        for i in range(training_iterations):
             result = algo.train()
             reward = (result.get("env_runners", {}).get("episode_return_mean")
                         or result.get("episode_reward_mean")
                         or result.get("sampler_results", {}).get("episode_reward_mean")
                         or "N/A")
-            print(f"Iteration {i+1}/50 | Mean Episode Reward: {reward}")
+            print(f"Iteration {i+1}/{training_iterations} | Mean Episode Reward: {reward}")
 
         algo.stop()
         print("Training complete!")
-        checkpoint_path = os.path.abspath("First_Test_run_001")
+        checkpoint_path = os.path.abspath(self.config["experiment"]["test_run_name"])
         algo.save(checkpoint_path)
 
     def test(self):
@@ -73,7 +82,7 @@ class Experiment:
             )
         )
         algo = config.build_algo()
-        checkpoint_path = os.path.abspath("First_Test_run_001")
+        checkpoint_path = os.path.abspath(self.config["experiment"]["test_run_name"])
         algo.restore(checkpoint_path)
         print(f"Checkpoint geladen von: {checkpoint_path}")
         env = self.create_env({}) # Eine Instanz der Env für den Test
@@ -112,6 +121,34 @@ class Experiment:
             obs, rewards, terminateds, truncateds, infos = env.step(actions)
             total_reward += sum(rewards.values())      
             
-        print(f"Test abgeschlossen! Gesamt-Reward: {total_reward}")
+            # --- Debug Ausgaben ---
+            base_env = env.env.unwrapped
+            print(f"\n--- Step: {base_env.current_step} ---")
+            agents_in_nest = len(base_env.nesting_agents)
+            agents_in_sampling_loc = [0 for _ in range(self.config["experiment"]["num_locations"])]
+            votes = [0 for _ in range(self.config["experiment"]["num_locations"])]
+
+            #!! AUFPASSEN MIT NEXT_LOCATION -> ÜBERPRÜFEN!
+            for agent in base_env.agent_objects:
+                if agent.next_location != base_env.nest_loc_index:
+                    agents_in_sampling_loc[agent.next_location] += 1
+                if agent.current_vote is not None:
+                    votes[agent.current_vote] += 1
+
+            print(f"Agents in Nest: {agents_in_nest}")
+            print(f"Agents in Sampling Locs: {agents_in_sampling_loc}")
+            print(f"Votes: {votes}")
+            print(f"Lambdas: {base_env.lambdas}")
+            correct_agents = 0
+            for agent in base_env.nesting_agents:
+                print("Agent ID:", agent.id)
+                print("Current Vote:", agent.current_vote)
+                print("Argmin Lambdas:", np.argmin(base_env.lambdas))
+                if agent.current_vote == np.argmin(base_env.lambdas):
+                    correct_agents += 1
+            print(f"Correct Agents: {correct_agents}")
+            print(f"Consensus: {correct_agents / base_env.config["experiment"]["num_agents"]} [Needs: {base_env.config["experiment"]["quorum_threshold"]}]")   
+            
+        print(f"\nTest abgeschlossen! Gesamt-Reward: {total_reward}")
         algo.stop()
         

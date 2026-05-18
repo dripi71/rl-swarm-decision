@@ -20,8 +20,11 @@ class Agent:
         for i in range(num_locations):
             a = self.timesteps_at_location[i]
             b = self.events_at_location[i]
-            quality_estimates.append(b / (a + 1))
+            if a == 0:
+                quality_estimates.append(float('inf'))
+            else:
+                quality_estimates.append(b / a)
 
-        self.current_vote = int(np.argmax(quality_estimates))
+        self.current_vote = int(np.argmin(quality_estimates))
            
 

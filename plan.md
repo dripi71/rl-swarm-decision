@@ -21,3 +21,5 @@
 #
 #
 First Run: 2 Locations, 50 Agents, lambdas fixed auf [0.1, 0.8]!
+
+!!! Bug in consensu berechnung! Aktuell nur abbruch wenn consensus = 100%

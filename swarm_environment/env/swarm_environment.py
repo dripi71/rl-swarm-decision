@@ -87,8 +87,8 @@ class SwarmDecisionEnvironment(AECEnv):
             self.sampling_agents[current_location].remove(agent)
 
         agent.next_location = action[PredictionIndices.LOCATION]
-        # Predicted stay time for the next location
-        agent.next_location_duration = action[PredictionIndices.DURATION]
+        # Predicted stay time for the next location, needs 1 step in order to prevent freezing time
+        agent.next_location_duration = action[PredictionIndices.DURATION] + 1
 
         traveltime = self.calculate_travel_time(current_location, agent.next_location)
 
