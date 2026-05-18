@@ -1,9 +1,12 @@
+from ray.rllib import SampleBatch
 import yaml
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from swarm_environment.env.swarm_environment import SwarmDecisionEnvironment
 import os
+import numpy as np
+import torch
 
 class Experiment:
     def __init__(self):
@@ -78,27 +81,36 @@ class Experiment:
         terminateds = {"__all__": False}
         truncateds = {"__all__": False}
         total_reward = 0
+        module = algo.get_module("shared_policy")
 
         print("Starte Test-Lauf...")
+
+        # Actions have to be retrieved unneccessarily complicated over logits, because of 
+        # https://github.com/ray-project/ray/issues/40312
         while not terminateds["__all__"] and not truncateds["__all__"]:
             
             agent_ids = list(obs.keys())
-            obs_batch = list(obs.values())
+            obs_tensor = torch.from_numpy(np.array(list(obs.values()), dtype=np.float32))
+            output = module.forward_inference({SampleBatch.OBS: obs_tensor})
+            logits = output["action_dist_inputs"]
 
-            module = algo.get_module("shared_policy")
-            output = module.forward_inference({"obs": obs_batch})
-
+            num_loc_actions = self.config["experiment"]["num_locations"] + 1
+            num_dur_actions = self.config["experiment"]["max_wait"] + 1
+    
+            loc_logits = logits[:, :num_loc_actions]
+            dur_logits = logits[:, num_loc_actions:num_loc_actions + num_dur_actions]
+    
+            loc_actions = torch.argmax(loc_logits, dim=-1).cpu().numpy()
+            dur_actions = torch.argmax(dur_logits, dim=-1).cpu().numpy()
+    
+            # Action als Array [location, duration] – genau was dein Env erwartet
             actions = {
-                agent_id: action for agent_id, action in zip(agent_ids, output["actions"])
+                agent_id: np.array([loc, dur], dtype=np.int64)
+                for agent_id, loc, dur in zip(agent_ids, loc_actions, dur_actions)
             }
-            
+    
             obs, rewards, terminateds, truncateds, infos = env.step(actions)
-            
-            print(f"Prio Q:")
-            print(env.prio_Q.print())
-
-
-            total_reward += sum(rewards.values())
+            total_reward += sum(rewards.values())      
             
         print(f"Test abgeschlossen! Gesamt-Reward: {total_reward}")
         algo.stop()
