@@ -1,15 +1,16 @@
 experiment:
-  num_agents: 5
+  num_agents: 50
   num_locations: 2
   lambda_range: [1, 10]
-  training: true
+  training: false
   travel_time: 10
   quorum_threshold: 0.7
   max_wait: 20
+  max_steps: 1000
 
 rewards:
-  reward_per_travel_timestep: -0.01
   reward_per_event: -0.5
-  reward_per_sampling_timestep: 0.02
   reward_for_correct_decision: 10
   reward_for_wrong_decision: -10
+  solved_bonus_time_decay: 0.001
+  progress_bonus: 0.1

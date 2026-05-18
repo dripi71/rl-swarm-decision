@@ -18,7 +18,7 @@ api_test(env, num_cycles=1000)
 
 env.reset()
 
-for i in range(10):
+for i in range(100):
     agent_id = env.agent_selection
     
     obs, reward, termination, truncation, info = env.last()

@@ -18,9 +18,9 @@ class Agent:
         
         quality_estimates = []
         for i in range(num_locations):
-            a = 1.0 + self.timesteps_at_location[i]
-            b = 1.0 + self.events_at_location[i]
-            quality_estimates.append(a / (a + b))
+            a = self.timesteps_at_location[i]
+            b = self.events_at_location[i]
+            quality_estimates.append(b / (a + 1))
 
         self.current_vote = int(np.argmax(quality_estimates))
            

@@ -1,6 +1,4 @@
+from experiments.experiment import Experiment
 
-with open("config/configuration.yaml", "r") as f:
-    config = yaml.safe_load(f)
-
-experiment = Experiment(config)
+experiment = Experiment()
 experiment.run()

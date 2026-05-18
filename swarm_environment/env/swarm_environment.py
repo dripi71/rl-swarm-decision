@@ -38,11 +38,10 @@ class SwarmDecisionEnvironment(AECEnv):
         # observation space: loc_obs (N+1) + quality_estimates (N) + self_vote (N) + nest_votes_ratio (N) = 4*N + 1
         obs_dim = 4 * self.config["experiment"]["num_locations"] + 1
         self.observation_spaces = {
-            agent: gym.spaces.Box(low=0.0, high=1.0, shape=(obs_dim,), dtype=np.float32) 
+            agent: gym.spaces.Box(low=0.0, high=np.inf, shape=(obs_dim,), dtype=np.float32) 
             for agent in self.agents
         }
         
-        # Wichtig für PettingZoo / RLlib: possible_agents definieren!
         self.possible_agents = self.agents[:]
 
     def reset(self, seed=None, options=None):
@@ -98,14 +97,10 @@ class SwarmDecisionEnvironment(AECEnv):
         else:
             self.prio_Q.add([agent.id, ActionTypes.SAMPLING, self.current_step + traveltime])
 
+        best_location = np.argmin(self.lambdas)
 
-        # Hier kommt dann das reward system rein
         ## Reward system
-        # Penalty for travel time
-        self.rewards[agent.id] += traveltime * self.config["rewards"]["reward_per_travel_timestep"]
-        # Reward for sampling time
-        self.rewards[agent.id] += agent.next_location_duration * self.config["rewards"]["reward_per_sampling_timestep"]
-
+        # Reward for correct sampling
         next_event = self.prio_Q.pop()
         while(not self.needs_prediction(next_event)):
             self.process_deterministic_event(next_event)
@@ -117,13 +112,11 @@ class SwarmDecisionEnvironment(AECEnv):
 
         # Check if swarm has made a decision
         decision = self.check_consensus()
-        if decision is not None:
-            best_location = np.argmin(self.lambdas)
-            
+        if decision is not None:            
             # correct decision
             if decision == best_location:
                 for agent_id in self.agents:
-                    self.rewards[agent_id] += self.config["rewards"]["reward_for_correct_decision"]
+                    self.rewards[agent_id] += self.config["rewards"]["reward_for_correct_decision"] - self.current_step * self.config["rewards"]["solved_bonus_time_decay"]
             else:
                 # wrong decision
                 for agent_id in self.agents:
@@ -131,7 +124,22 @@ class SwarmDecisionEnvironment(AECEnv):
 
             # end episode
             self.terminations = { agent: True for agent in self.agents}
-            
+        
+        num_agents = len(self.agents)
+        votes_for_best_loc = sum( 1 for a in self.nesting_agents if a.current_vote == best_location)
+        progress = votes_for_best_loc / num_agents
+        for agent_id in self.agents:
+            agent = self.get_agent_by_id(agent_id)
+            if agent.current_vote == best_location:
+                self.rewards[agent_id] += progress * self.config["rewards"]["progress_bonus"]
+
+        if self.current_step >= self.config["experiment"]["max_steps"]:
+            for agent_id in self.agents:
+                self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]
+            self.truncations = {agent: True for agent in self.agents}
+            self._accumulate_rewards()
+            return
+
         self._accumulate_rewards()
                 
         
@@ -150,8 +158,8 @@ class SwarmDecisionEnvironment(AECEnv):
         loc_obs[agent.next_location] = 1.0
         quality_estimates = np.zeros(num_locations, dtype=np.float32)
         for i in range(num_locations):
-            a = 1.0 + agent.timesteps_at_location[i]
-            b = 1.0 + agent.events_at_location[i]
+            a = agent.timesteps_at_location[i]
+            b = agent.events_at_location[i]
             quality_estimates[i] = b / (a + 1)
         self_vote = np.zeros(num_locations, dtype=np.float32)
         if (agent.current_vote is not None):
