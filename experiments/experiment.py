@@ -7,11 +7,13 @@ from swarm_environment.env.swarm_environment import SwarmDecisionEnvironment
 import os
 import numpy as np
 import torch
+import logging
 
 class Experiment:
     def __init__(self):
         with open("config/configuration.yaml", "r") as f:
             self.config = yaml.safe_load(f)
+        logging.basicConfig(filename="logs/last_run.txt", filemode="w", level=logging.INFO, format='%(message)s')
 
     def create_env(self, env_config):
         with open("config/configuration.yaml", "r") as f:
@@ -52,7 +54,7 @@ class Experiment:
             print(f"Checkpoint loaded from: {checkpoint_path}")
 
 
-        training_iterations = 50
+        training_iterations = 20
 
         for i in range(training_iterations):
             result = algo.train()
@@ -109,45 +111,42 @@ class Experiment:
             loc_logits = logits[:, :num_loc_actions]
             dur_logits = logits[:, num_loc_actions:num_loc_actions + num_dur_actions]
     
-            loc_actions = torch.argmax(loc_logits, dim=-1).cpu().numpy()
-            dur_actions = torch.argmax(dur_logits, dim=-1).cpu().numpy()
+            loc_dist = torch.distributions.Categorical(logits=loc_logits)
+            dur_dist = torch.distributions.Categorical(logits=dur_logits)
     
-            # Action als Array [location, duration] – genau was dein Env erwartet
+            loc_actions = loc_dist.sample().cpu().numpy()
+            dur_actions = dur_dist.sample().cpu().numpy()
+    
             actions = {
                 agent_id: np.array([loc, dur], dtype=np.int64)
                 for agent_id, loc, dur in zip(agent_ids, loc_actions, dur_actions)
             }
     
             obs, rewards, terminateds, truncateds, infos = env.step(actions)
+            logging.info(f"Actions: {actions}")
             total_reward += sum(rewards.values())      
             
             # --- Debug Ausgaben ---
             base_env = env.env.unwrapped
-            print(f"\n--- Step: {base_env.current_step} ---")
+            logging.info(f"\n--- Step: {base_env.current_step} ---")
             agents_in_nest = len(base_env.nesting_agents)
-            agents_in_sampling_loc = [0 for _ in range(self.config["experiment"]["num_locations"])]
             votes = [0 for _ in range(self.config["experiment"]["num_locations"])]
+            sampling_agents = [len(base_env.sampling_agents[l]) for l in range(self.config["experiment"]["num_locations"])]
 
-            #!! AUFPASSEN MIT NEXT_LOCATION -> ÜBERPRÜFEN!
+
+            correct_voting_agents = 0
             for agent in base_env.agent_objects:
-                if agent.next_location != base_env.nest_loc_index:
-                    agents_in_sampling_loc[agent.next_location] += 1
                 if agent.current_vote is not None:
                     votes[agent.current_vote] += 1
+                    if agent.current_vote == np.argmin(base_env.lambdas):
+                        correct_voting_agents += 1
 
-            print(f"Agents in Nest: {agents_in_nest}")
-            print(f"Agents in Sampling Locs: {agents_in_sampling_loc}")
-            print(f"Votes: {votes}")
-            print(f"Lambdas: {base_env.lambdas}")
-            correct_agents = 0
-            for agent in base_env.nesting_agents:
-                print("Agent ID:", agent.id)
-                print("Current Vote:", agent.current_vote)
-                print("Argmin Lambdas:", np.argmin(base_env.lambdas))
-                if agent.current_vote == np.argmin(base_env.lambdas):
-                    correct_agents += 1
-            print(f"Correct Agents: {correct_agents}")
-            print(f"Consensus: {correct_agents / base_env.config["experiment"]["num_agents"]} [Needs: {base_env.config["experiment"]["quorum_threshold"]}]")   
+            logging.info(f"Agents in Nest: {agents_in_nest}")
+            logging.info(f"Agents in Sampling Locs: {sampling_agents}")
+            logging.info(f"Votes: {votes}")
+            logging.info(f"Lambdas: {base_env.lambdas}")
+            logging.info(f"Correct Voting Agents: {correct_voting_agents}")
+            logging.info(f"Consensus: {correct_voting_agents / base_env.config["experiment"]["num_agents"]} [Needs: {base_env.config["experiment"]["quorum_threshold"]}]")   
             
         print(f"\nTest abgeschlossen! Gesamt-Reward: {total_reward}")
         algo.stop()

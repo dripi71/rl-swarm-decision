@@ -2,17 +2,17 @@ experiment:
   num_agents: 50
   num_locations: 2
   lambda_range: [1, 10]
-  training: false
+  training: true
   travel_time: 10
   quorum_threshold: 0.7
   max_wait: 20
   max_steps: 1000
-  test_run_name: "Test_run_005"
-  load_checkpoint: true
+  test_run_name: "Test_run_002"
+  load_checkpoint: false
 
 rewards:
-  reward_per_event: 0.0
+  reward_per_event: -0.1
   reward_for_correct_decision: 10
   reward_for_wrong_decision: -10
   solved_bonus_time_decay: 0.001
-  progress_bonus: 50
+  progress_bonus: 1
