@@ -6,18 +6,19 @@ class Agent:
         self.next_action_duration = 0
         self.next_location = -1
         self.current_vote = None
-        self.timesteps_at_location = [0 for _ in range(config["experiment"]["num_locations"])]
-        self.events_at_location = [0 for _ in range(config["experiment"]["num_locations"])]
-        self.confidence = [0 for _ in range(config["experiment"]["num_locations"])]
+        self.num_locations = config["experiment"]["num_locations"]
+        self.timesteps_at_location = [0 for _ in range(self.num_locations)]
+        self.events_at_location = [0 for _ in range(self.num_locations)]
+        self.confidence = [0 for _ in range(self.num_locations)]
 
-    def update_vote(self, num_locations):
+    def update_vote(self):
         # if there are no timesteps at any location, the agent has no vote
         if sum(self.timesteps_at_location) == 0:
             self.current_vote = None
             return
         
         quality_estimates = []
-        for i in range(num_locations):
+        for i in range(self.num_locations):
             a = self.timesteps_at_location[i]
             b = self.events_at_location[i]
             if a == 0:

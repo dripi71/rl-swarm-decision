@@ -2,13 +2,13 @@ experiment:
   num_agents: 50
   num_locations: 2
   lambda_range: [1, 10]
-  training: true
+  training: false
   travel_time: 10
   quorum_threshold: 0.7
   max_wait: 20
   max_steps: 1000
-  test_run_name: "Test_run_002"
-  load_checkpoint: false
+  test_run_name: "Test_run_003"
+  load_checkpoint: true
 
 rewards:
   reward_per_event: -0.1
