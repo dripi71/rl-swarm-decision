@@ -20,70 +20,40 @@
 #
 #
 #
-First Run: 2 Locations, 50 Agents, lambdas fixed auf [0.1, 0.8]!
-
-!!! Achtung mit traveltime:
-
---- Step: 56 ---
-Agents in Nest: 0
-Agents in Sampling Locs: [0, 1]
-Votes: [50, 0]
-Lambdas: [0.1, 0.8]
-Correct Agents: 0
-Consensus: 0.0 [Needs: 0.7]
-
---- Step: 86 ---
-Agents in Nest: 50
-Agents in Sampling Locs: [0, 0]
-Votes: [50, 0]
-Lambdas: [0.1, 0.8]
-
-Nach 30 schritten sind plötzlich alle im nest? Travel time eigentlich 10!
 
 
-
-!! BUG:
-Consensus wird erst berechnet wenn ein agent das nest verlässt (?)
-
---- Step: 56 ---
-Agents in Nest: 0
-Agents in Sampling Locs: [0, 2]
-Votes: [50, 0]
-Lambdas: [0.1, 0.8]
-Correct Agents: 0
-Consensus: 0.0 [Needs: 0.7]
-Actions: {48: array([ 2, 19])}
-
---- Step: 56 ---
-Agents in Nest: 0
-Agents in Sampling Locs: [0, 1]
-Votes: [50, 0]
-Lambdas: [0.1, 0.8]
-Correct Agents: 0
-Consensus: 0.0 [Needs: 0.7]
-Actions: {49: array([ 2, 19])}
-
---- Step: 86 ---
-Agents in Nest: 50
-Agents in Sampling Locs: [0, 0]
-Votes: [50, 0]
-Lambdas: [0.1, 0.8]
-Correct Agents: 50
-Consensus: 1.0 [Needs: 0.7]
-
--> Step 86 goal erreicht, aber erst nachdem alle agenten 56 (current step) + 10 (traveltime) + 19 (time at nest)
-     -> sollte aber direkt bei eintritt ins nest eigentlich auch berechnet werden
-
-
-
-! Wie kann man das beheben, wenn man es trotzdem nicht will? Wenn du möchtest, dass Agenten selbst bei gleichem Wissen von Natur aus völlig verschiedene Tendenzen haben (echter, dauerhafter Symmetriebruch), musst du den Agenten "Individualität" verleihen. Das macht man in MARL meist so, dass man die Beobachtung (Observation) anpasst:
-
-Agent-ID übergeben: Du hängst an die Observation einfach den normierten Wert agent.id / num_agents an. Dadurch hat Agent 1 einen leicht anderen Input in das Netz als Agent 2, und das Netz wird für beide minimal unterschiedliche Wahrscheinlichkeiten ausspucken.
-Zufallsrauschen (Noise): Man packt an das Ende jeder Observation einen kleinen Zufallswert.
+Run 05: mit sehr wenig time decay (0.001)
+Run 06: höherer time decay (0.05)
 
 
 
 
-Letztes Problem:
+Problem:
 
-agenten können mehr reward  bekommen wenn sie trödeln -> sollten belohnt werden wenn sie schnell sind
+Gerade wird bei den events aufgerundet wenn das nächste event innerhalb eines timesteps passiert.
+Das hat aber das problem, dass ein Lambda von 10 und ein Lambda von 20 fast nicht zu unterscheiden sind weil beide jeden schritt ein event auslösen.
+
+Lösung 1: 
+
+Die schritte werden nicht aufgerundet sondern der timestep geschieht genau dann wen er passiert also auch in nicht ganzen schritten
+
+Problem -> Laufzeit drastisch höher da viele events in der queue sind
+
+
+Lösung 2:
+Die Events sind nicht mehr in der Prio Q sondern jeder agent wenn er fertig ist mit samplen zieht aus dem entsprechenden
+poisson prozess die anzahl events die er erfahren hat während seiner samplezeit
+
+Problem: Nicht alle agents in einer Location sehen die gleichen events weil sie intern pro agent berechnet werden.
+
+Lösung 3:
+
+Man nimmt einfach kleinere Lambdas sodass die scale wieder passt
+
+
+
+Vergleichsmetriken mit anderem Algorithmus:
+
+steps
+events experienced
+lambdas

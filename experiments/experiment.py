@@ -18,8 +18,7 @@ class Experiment:
     def create_env(self, env_config):
         with open("config/configuration.yaml", "r") as f:
             config = yaml.safe_load(f)
-        lambdas = [0.1, 0.8]
-        env = SwarmDecisionEnvironment(config, lambdas)
+        env = SwarmDecisionEnvironment(config)
         return PettingZooEnv(env)
 
     def run(self):
@@ -54,7 +53,7 @@ class Experiment:
             print(f"Checkpoint loaded from: {checkpoint_path}")
 
 
-        training_iterations = 20
+        training_iterations = self.config["experiment"]["training_iterations"]
 
         for i in range(training_iterations):
             result = algo.train()

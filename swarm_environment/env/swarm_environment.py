@@ -6,15 +6,17 @@ from config.constants import PredictionIndices
 from config.constants import QObjectIndices
 import numpy as np
 from agents.agent import Agent
+import logging
+
 
 class SwarmDecisionEnvironment(AECEnv):
     metadata = {
         "name": "swarm_decision_v1",
     }
 
-    def __init__(self, config, lambdas):
+    def __init__(self, config):
         self.config = config
-        self.lambdas = lambdas
+        self.lambdas = self.generateLambdas()
         self.sampling_agents = [[] for _ in range(self.config["experiment"]["num_locations"])]
         self.nesting_agents = []
         self.agents = []
@@ -45,6 +47,8 @@ class SwarmDecisionEnvironment(AECEnv):
         
         self.possible_agents = self.agents[:]
 
+        logging.basicConfig(filename="logs/last_run.txt", filemode="w", level=logging.INFO, format='%(message)s')
+
     def reset(self, seed=None, options=None):
         if seed is not None:
             np.random.seed(seed)
@@ -62,6 +66,22 @@ class SwarmDecisionEnvironment(AECEnv):
         self.terminations = { agent: False for agent in self.agents}
         self.truncations = { agent: False for agent in self.agents}
         self.infos = { agent: {} for agent in self.agents}
+        self.lambdas = self.generateLambdas()
+    
+    def generateLambdas(self):
+        step = 0.1
+        l_min = self.config["experiment"]["lambda_min"]
+        l_max = self.config["experiment"]["lambda_max"]
+
+        num_steps = int(round((l_max - l_min) / step + 1))
+        pool = np.linspace(l_min, l_max, num=num_steps)
+        amount = self.config["experiment"]["num_locations"]
+
+        if amount > len(pool):
+            raise ValueError(
+                f"num_locations ({amount}) is greater than number of available lambdas ({len(pool)})"
+            )
+        return np.random.choice(pool, amount, replace=False)
 
     def step(self, action):
         if (
@@ -133,12 +153,13 @@ class SwarmDecisionEnvironment(AECEnv):
             self.last_progress = progress
 
 
-        if self.current_step >= self.config["experiment"]["max_steps"]:
-            for agent_id in self.agents:
-                self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]
-            self.truncations = {agent: True for agent in self.agents}
-            self._accumulate_rewards()
-            return
+#        if self.current_step >= self.config["experiment"]["max_steps"]:
+#            for agent_id in self.agents:
+#                self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]
+#            self.truncations = {agent: True for agent in self.agents}
+#            logging.info("Maximum steps reached, truncated: ", self.current_step)
+#            self._accumulate_rewards()
+#            return
 
         self._accumulate_rewards()
                 
@@ -187,7 +208,7 @@ class SwarmDecisionEnvironment(AECEnv):
         
         for i in range(self.config["experiment"]["num_locations"]):
             self.locations.append(i)
-            delay = round(np.random.exponential(scale=1.0 / self.lambdas[i]))
+            delay = max(1, round(np.random.exponential(scale=1.0 / self.lambdas[i])))
             self.prio_Q.add([i, ActionTypes.LOCATION_EVENT, self.current_step + delay])
         
         # Pop the first event to set the initial agent selection
@@ -249,7 +270,7 @@ class SwarmDecisionEnvironment(AECEnv):
                     self.rewards[agent.id] += self.config["rewards"]["reward_per_event"]
                     # information update -> update belief
                     agent.update_vote()
-                delay = round(np.random.exponential(scale=1.0 / self.lambdas[location_id]))
+                delay = max(1, round(np.random.exponential(scale=1.0 / self.lambdas[location_id])))
                 self.prio_Q.add([location_id, ActionTypes.LOCATION_EVENT, self.current_step + delay])
 
     def state(self):
