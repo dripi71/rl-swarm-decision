@@ -40,6 +40,7 @@ class Experiment:
 
         config = (
             PPOConfig()
+            .debugging(seed=self.config["experiment"]["base_seed"])
             .environment("swarm_decision_v1")
             .framework("torch")
             .env_runners(num_env_runners=16)
@@ -75,9 +76,11 @@ class Experiment:
     def test(self):
         print("Started policy test")
         register_env("swarm_decision_v1", self.create_env)
+        base_seed = self.config["experiment"]["base_seed"]
 
         config = (
             PPOConfig()
+            .debugging(seed=base_seed)
             .environment("swarm_decision_v1")
             .framework("torch")
             .env_runners(num_env_runners=1)
@@ -92,7 +95,7 @@ class Experiment:
         print(f"Checkpoint geladen von: {checkpoint_path}")
 
         eval_iterations = self.config["experiment"]["eval_iterations"]
-        base_seed = self.config["experiment"]["base_seed"]
+        
 
         for i in range(eval_iterations):
             episode_seed = base_seed + i
@@ -119,12 +122,10 @@ class Experiment:
                 # action_dist_inputs layout for Dict(Discrete(N+1), Box(2,)):
                 #   [:N+1]     → location logits (Categorical)
                 #   [N+1:N+3]  → duration Gaussian means (mu_x1, mu_x2)
-                #   [N+3:N+5]  → duration Gaussian log-stds (log_s1, log_s2) — used during training
                 logits = output["action_dist_inputs"]
                 num_loc_actions = self.config["experiment"]["num_locations"] + 1
 
                 loc_logits  = logits[:, :num_loc_actions]
-                # Use only the Gaussian means for deterministic evaluation
                 dur_means   = logits[:, num_loc_actions : num_loc_actions + 2]  # (batch, 2)
 
                 # Deterministic location: argmax over Categorical logits
