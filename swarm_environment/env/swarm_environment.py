@@ -168,7 +168,7 @@ class SwarmDecisionEnvironment(AECEnv):
             for agent_id in self.agents:
                 self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]
             self.truncations = {agent: True for agent in self.agents}
-            logging.info("Maximum steps reached, truncated: ", self.current_step)
+            logging.info(f"Maximum steps reached, truncated: {self.current_step}")
             self._accumulate_rewards()
             return
 

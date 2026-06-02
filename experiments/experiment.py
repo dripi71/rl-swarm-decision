@@ -43,6 +43,7 @@ class Experiment:
             .debugging(seed=self.config["experiment"]["base_seed"])
             .environment("swarm_decision_v1")
             .framework("torch")
+            .training(train_batch_size=16000)
             .env_runners(num_env_runners=16)
             .multi_agent(
                 policies={"shared_policy": (None, None, None, {})},
