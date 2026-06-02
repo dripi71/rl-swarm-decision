@@ -8,6 +8,7 @@ import os
 import numpy as np
 import torch
 import logging
+import random
 
 class Experiment:
     def __init__(self):
@@ -15,8 +16,8 @@ class Experiment:
             self.config = yaml.safe_load(f)
         logging.basicConfig(filename="logs/last_run.txt", filemode="w", level=logging.INFO, format='%(message)s')
         test_run_name = self.config["experiment"]["test_run_name"]
-        self.action_logger = self.setup_logger(name="action_logger", log_file=f"logs/actions/{test_run_name}.txt", mode="w")
-        self.metric_logger = self.setup_logger(name="metric_logger", log_file=f"logs/metrics/{test_run_name}.txt", mode="w")
+        self.action_logger = self.setup_logger(name="action_logger", log_file=f"logs/actions/{test_run_name}.csv", mode="w")
+        self.metric_logger = self.setup_logger(name="metric_logger", log_file=f"logs/metrics/{test_run_name}.csv", mode="w")
 
     def create_env(self, env_config):
         with open("config/configuration.yaml", "r") as f:
@@ -91,11 +92,14 @@ class Experiment:
         print(f"Checkpoint geladen von: {checkpoint_path}")
 
         eval_iterations = self.config["experiment"]["eval_iterations"]
+        base_seed = self.config["experiment"]["base_seed"]
 
         for i in range(eval_iterations):
+            episode_seed = base_seed + i
+            self.set_global_seeds(episode_seed)
 
             env = self.create_env({})
-            obs, info = env.reset()
+            obs, info = env.reset(seed=episode_seed)
             terminateds = {"__all__": False}
             truncateds = {"__all__": False}
             total_reward = 0
@@ -170,9 +174,9 @@ class Experiment:
             events_experienced_per_agent = total_events_until_decision / self.config["experiment"]["num_agents"]        
             lambda_difficulty = np.round((np.max(base_env.lambdas) - np.min(base_env.lambdas)) / np.max(base_env.lambdas), 3)
             truncated = truncateds["__all__"]
-            labdas = base_env.lambdas
+            lambdas = base_env.lambdas
 
-            self.metric_logger.info(f"{steps_to_decision},{correct_decision},{total_events_until_decision},{events_experienced_per_agent},{lambda_difficulty},{truncated},{labdas}")
+            self.metric_logger.info(f"{episode_seed},{steps_to_decision},{correct_decision},{total_events_until_decision},{events_experienced_per_agent},{lambda_difficulty},{truncated},{lambdas}")
             algo.stop()
         
     def setup_logger(self, name, log_file, mode, level=logging.INFO, fmt='%(message)s'):
@@ -183,3 +187,12 @@ class Experiment:
          logger.addHandler(handler)
          logger.propagate = False
          return logger
+    
+    def set_global_seeds(self, seed):
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+            

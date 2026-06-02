@@ -13,6 +13,7 @@ experiment:
   load_checkpoint: true
   training_iterations: 50
   eval_iterations: 250
+  base_seed: 462
 
 rewards:
   reward_per_event: 0.0
