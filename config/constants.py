@@ -13,6 +13,6 @@ class ActionTypes(IntEnum):
     SAMPLING_FINISHED = 3
     LOCATION_EVENT = 4
 
-class PredictionIndices(IntEnum):
-    LOCATION = 0
-    DURATION = 1
+class PredictionKeys:
+    LOCATION = "location"
+    DURATION_PARAMS = "duration_params"

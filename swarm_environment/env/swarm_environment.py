@@ -2,7 +2,7 @@ from pettingzoo import AECEnv
 import gymnasium as gym
 from priority_queue.priority_queue import Priority_Q
 from config.constants import ActionTypes
-from config.constants import PredictionIndices
+from config.constants import PredictionKeys
 from config.constants import QObjectIndices
 import numpy as np
 from agents.agent import Agent
@@ -37,11 +37,19 @@ class SwarmDecisionEnvironment(AECEnv):
         self.truncations = { agent: False for agent in self.agents}
         self.infos = { agent: {} for agent in self.agents}
 
-        # action space: 1. Variable: 0 - num_locations: (loc1, ..., locN, NEST)
-        self.action_spaces = {agent: gym.spaces.MultiDiscrete([self.config["experiment"]["num_locations"] + 1, self.config["experiment"]["max_wait"] + 1]) for agent in self.agents}
+        self.action_spaces = {
+            agent: gym.spaces.Dict({
+                PredictionKeys.LOCATION: gym.spaces.Discrete(
+                    self.config["experiment"]["num_locations"] + 1
+                ),
+                PredictionKeys.DURATION_PARAMS: gym.spaces.Box(
+                    low=-10.0, high=10.0, shape=(2,), dtype=np.float32
+                ),
+            }) for agent in self.agents
+        }
         
         # observation space: loc_obs (N+1) + quality_estimates (N) + self_vote (N) + nest_votes_ratio (N) + Agent ID (break obs symmetrie) = 4*N + 2
-        obs_dim = 4 * self.config["experiment"]["num_locations"] + 1
+        obs_dim = 4 * self.config["experiment"]["num_locations"] + 1 + 1
         self.observation_spaces = {
             agent: gym.spaces.Box(low=0.0, high=np.inf, shape=(obs_dim,), dtype=np.float32) 
             for agent in self.agents
@@ -116,9 +124,10 @@ class SwarmDecisionEnvironment(AECEnv):
         if(self.swarm_reached_decision()):
             return
 
-        agent.next_location = action[PredictionIndices.LOCATION]
-        agent.next_location_duration = action[PredictionIndices.DURATION]
-
+        agent.next_location = action[PredictionKeys.LOCATION]
+        agent.next_location_duration = self._sample_gamma_duration(
+            action[PredictionKeys.DURATION_PARAMS]
+        )
         traveltime = self.calculate_travel_time(current_location, agent.next_location)
 
         if(agent.next_location == self.nest_loc_index):
@@ -197,7 +206,10 @@ class SwarmDecisionEnvironment(AECEnv):
                         nest_votes_ratio[nest_agent.current_vote] += 1
                 nest_votes_ratio = nest_votes_ratio / total_nest_agents
         
-        observation = np.concatenate([loc_obs, quality_estimates, self_vote, nest_votes_ratio])
+        # Normalized agent ID to break observation symmetry between agents
+        num_agents = self.config["experiment"]["num_agents"]
+        agent_id_norm = np.array([agent.id / max(num_agents - 1, 1)], dtype=np.float32)
+        observation = np.concatenate([loc_obs, quality_estimates, self_vote, nest_votes_ratio, agent_id_norm])
         return observation
 
     def createLocationsAndAgents(self):
@@ -218,6 +230,17 @@ class SwarmDecisionEnvironment(AECEnv):
         self.agent_selection = first_event[QObjectIndices.AGENTID]
         self.current_step = first_event[QObjectIndices.ACTIONTIME]
 
+
+    def _softplus(self, x):
+        return np.log1p(np.exp(np.clip(x, -30, 30)))
+
+    def _sample_gamma_duration(self, duration_params):
+        epsilon = self.config["experiment"]["gamma_epsilon"]
+        x1, x2 = float(duration_params[0]), float(duration_params[1])
+        alpha = self._softplus(x1) + epsilon
+        beta  = self._softplus(x2) + epsilon
+        sample = np.random.gamma(shape=alpha, scale=1.0 / beta)
+        return max(1, round(float(sample)))
 
     def render(self):
         pass

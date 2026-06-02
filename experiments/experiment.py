@@ -115,31 +115,31 @@ class Experiment:
                 print("AGENT IDS: ", agent_ids)
                 obs_tensor = torch.from_numpy(np.array(list(obs.values()), dtype=np.float32))
                 output = module.forward_inference({SampleBatch.OBS: obs_tensor})
+
+                # action_dist_inputs layout for Dict(Discrete(N+1), Box(2,)):
+                #   [:N+1]     → location logits (Categorical)
+                #   [N+1:N+3]  → duration Gaussian means (mu_x1, mu_x2)
+                #   [N+3:N+5]  → duration Gaussian log-stds (log_s1, log_s2) — used during training
                 logits = output["action_dist_inputs"]
-
                 num_loc_actions = self.config["experiment"]["num_locations"] + 1
-                num_dur_actions = self.config["experiment"]["max_wait"] + 1
-        
-                loc_logits = logits[:, :num_loc_actions]
-                dur_logits = logits[:, num_loc_actions:num_loc_actions + num_dur_actions]
-        
 
-                # Stochastic sampling
-        
-                #loc_dist = torch.distributions.Categorical(logits=loc_logits)
-                #dur_dist = torch.distributions.Categorical(logits=dur_logits)
-                #loc_actions = loc_dist.sample().cpu().numpy()
-                #dur_actions = dur_dist.sample().cpu().numpy()
-                
-                # Deterministic sampling
+                loc_logits  = logits[:, :num_loc_actions]
+                # Use only the Gaussian means for deterministic evaluation
+                dur_means   = logits[:, num_loc_actions : num_loc_actions + 2]  # (batch, 2)
+
+                # Deterministic location: argmax over Categorical logits
                 loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
-                dur_actions = torch.argmax(dur_logits, dim=1).cpu().numpy()
-                
+                # Deterministic duration: pass the raw means; environment applies softplus + Gamma
+                dur_params  = dur_means.cpu().numpy()  # shape (batch, 2)
+
                 actions = {
-                    agent_id: np.array([loc, dur], dtype=np.int64)
-                    for agent_id, loc, dur in zip(agent_ids, loc_actions, dur_actions)
+                    agent_id: {
+                        "location":       np.int64(loc),
+                        "duration_params": np.array([dp[0], dp[1]], dtype=np.float32),
+                    }
+                    for agent_id, loc, dp in zip(agent_ids, loc_actions, dur_params)
                 }
-                self.action_logger.info(f"{agent_ids[0]},{loc_actions[0]},{dur_actions[0]}")
+                self.action_logger.info(f"{agent_ids[0]},{loc_actions[0]},{dur_params[0][0]:.3f},{dur_params[0][1]:.3f}")
         
                 obs, rewards, terminateds, truncateds, infos = env.step(actions)
                 total_reward += sum(rewards.values())      

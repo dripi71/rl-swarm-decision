@@ -55,13 +55,16 @@ with open("tests/runtime_test.csv", "w") as f:
                         #print(f"Agent {agent_id} hat terminiert")
                     else:
                         random_destination = np.random.randint(0, num_locations + 1)
-                        random_duration = np.random.randint(10, 50)
+                        random_dur_params = np.random.uniform(-3.0, 3.0, size=2).astype(np.float32)
                         
                         agent_obj = env.get_agent_by_id(agent_id)
                         if np.random.random() < 0.3:
                             agent_obj.current_vote = np.random.randint(0, num_locations)
 
-                        action = [random_destination, random_duration]
+                        action = {
+                            "location":       np.int64(random_destination),
+                            "duration_params": random_dur_params,
+                        }
                         
                         #print(f"Action Prompt: Agent wählt {random_destination} für {random_duration} Steps")
 

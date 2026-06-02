@@ -3,14 +3,14 @@ experiment:
   num_locations: 2
   lambda_min: 0.1
   lambda_max: 1
-  training: false
+  training: true
   travel_time: 10
   quorum_threshold: 0.7
-  max_wait: 20
+  gamma_epsilon: 0.01
   # (!) timesteps, not agent steps
   max_steps: 1000
-  test_run_name: "Test_run_006"
-  load_checkpoint: true
+  test_run_name: "Test_run_08"
+  load_checkpoint: false
   training_iterations: 50
   eval_iterations: 250
   base_seed: 462
