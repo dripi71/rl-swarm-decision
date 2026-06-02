@@ -25,6 +25,8 @@ class SwarmDecisionEnvironment(AECEnv):
         self.prio_Q = Priority_Q()
         self.current_step = 0
         self.last_progress = 0.0
+        self.swarm_decision = None
+        self.experiment_best_location = np.argmin(self.lambdas)
         # The nest location index is the last index (num_locations because 0 is location 1)
         self.nest_loc_index = self.config["experiment"]["num_locations"]
         self.createLocationsAndAgents()
@@ -38,7 +40,7 @@ class SwarmDecisionEnvironment(AECEnv):
         # action space: 1. Variable: 0 - num_locations: (loc1, ..., locN, NEST)
         self.action_spaces = {agent: gym.spaces.MultiDiscrete([self.config["experiment"]["num_locations"] + 1, self.config["experiment"]["max_wait"] + 1]) for agent in self.agents}
         
-        # observation space: loc_obs (N+1) + quality_estimates (N) + self_vote (N) + nest_votes_ratio (N) = 4*N + 1
+        # observation space: loc_obs (N+1) + quality_estimates (N) + self_vote (N) + nest_votes_ratio (N) + Agent ID (break obs symmetrie) = 4*N + 2
         obs_dim = 4 * self.config["experiment"]["num_locations"] + 1
         self.observation_spaces = {
             agent: gym.spaces.Box(low=0.0, high=np.inf, shape=(obs_dim,), dtype=np.float32) 
@@ -59,6 +61,7 @@ class SwarmDecisionEnvironment(AECEnv):
         self.agent_objects = []
         self.locations = []
         self.last_progress = 0.0
+        self.swarm_decision = None
         self.sampling_agents = [[] for _ in range(self.config["experiment"]["num_locations"])]
         self.createLocationsAndAgents()
         self.rewards = { agent: 0 for agent in self.agents}
@@ -123,7 +126,6 @@ class SwarmDecisionEnvironment(AECEnv):
         else:
             self.prio_Q.add([agent.id, ActionTypes.SAMPLING, self.current_step + traveltime])
 
-        best_location = np.argmin(self.lambdas)
 
         ## Reward system
         next_event = self.prio_Q.pop()
@@ -140,7 +142,7 @@ class SwarmDecisionEnvironment(AECEnv):
 
         
         num_agents = len(self.agents)
-        votes_for_best_loc = sum( 1 for a in self.agent_objects if a.current_vote == best_location)
+        votes_for_best_loc = sum( 1 for a in self.agent_objects if a.current_vote == self.experiment_best_location)
         progress = votes_for_best_loc / num_agents
 
         # only give progess bonus if it improves -> prevent agent from milking progress rewards with stale progess
@@ -148,18 +150,18 @@ class SwarmDecisionEnvironment(AECEnv):
         if progress > self.last_progress:
             for agent_id in self.agents:
                 agent = self.get_agent_by_id(agent_id)
-                if agent.current_vote == best_location:
+                if agent.current_vote == self.experiment_best_location:
                     self.rewards[agent_id] += (progress - self.last_progress) * self.config["rewards"]["progress_bonus"]
             self.last_progress = progress
 
 
-#        if self.current_step >= self.config["experiment"]["max_steps"]:
-#            for agent_id in self.agents:
-#                self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]
-#            self.truncations = {agent: True for agent in self.agents}
-#            logging.info("Maximum steps reached, truncated: ", self.current_step)
-#            self._accumulate_rewards()
-#            return
+        if self.current_step >= self.config["experiment"]["max_steps"]:
+            for agent_id in self.agents:
+                self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]
+            self.truncations = {agent: True for agent in self.agents}
+            logging.info("Maximum steps reached, truncated: ", self.current_step)
+            self._accumulate_rewards()
+            return
 
         self._accumulate_rewards()
                 
@@ -325,10 +327,9 @@ class SwarmDecisionEnvironment(AECEnv):
         
         agent.update_vote()
     def swarm_reached_decision(self):
-        decision = self.check_consensus()
-        best_location = np.argmin(self.lambdas)
-        if decision is not None:
-            if decision == best_location:
+        self.swarm_decision = self.check_consensus()
+        if self.swarm_decision is not None:
+            if self.swarm_decision == self.experiment_best_location:
                 for agent_id in self.agents:
                     self.rewards[agent_id] += self.config["rewards"]["reward_for_correct_decision"] - self.current_step * self.config["rewards"]["solved_bonus_time_decay"]
             else:

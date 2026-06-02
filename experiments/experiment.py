@@ -14,6 +14,9 @@ class Experiment:
         with open("config/configuration.yaml", "r") as f:
             self.config = yaml.safe_load(f)
         logging.basicConfig(filename="logs/last_run.txt", filemode="w", level=logging.INFO, format='%(message)s')
+        test_run_name = self.config["experiment"]["test_run_name"]
+        self.action_logger = self.setup_logger(name="action_logger", log_file=f"logs/actions/{test_run_name}.txt", mode="w")
+        self.metric_logger = self.setup_logger(name="metric_logger", log_file=f"logs/metrics/{test_run_name}.txt", mode="w")
 
     def create_env(self, env_config):
         with open("config/configuration.yaml", "r") as f:
@@ -38,7 +41,7 @@ class Experiment:
             PPOConfig()
             .environment("swarm_decision_v1")
             .framework("torch")
-            .env_runners(num_env_runners=1)
+            .env_runners(num_env_runners=16)
             .multi_agent(
                 policies={"shared_policy": (None, None, None, {})},
                 policy_mapping_fn=lambda agent_id, episode, **kwargs: "shared_policy",
@@ -86,67 +89,97 @@ class Experiment:
         checkpoint_path = os.path.abspath(self.config["experiment"]["test_run_name"])
         algo.restore(checkpoint_path)
         print(f"Checkpoint geladen von: {checkpoint_path}")
-        env = self.create_env({}) # Eine Instanz der Env für den Test
-        obs, info = env.reset()
-        terminateds = {"__all__": False}
-        truncateds = {"__all__": False}
-        total_reward = 0
-        module = algo.get_module("shared_policy")
 
-        print("Starte Test-Lauf...")
+        eval_iterations = self.config["experiment"]["eval_iterations"]
 
-        # Actions have to be retrieved unneccessarily complicated over logits, because of 
-        # https://github.com/ray-project/ray/issues/40312
-        while not terminateds["__all__"] and not truncateds["__all__"]:
-            
-            agent_ids = list(obs.keys())
-            obs_tensor = torch.from_numpy(np.array(list(obs.values()), dtype=np.float32))
-            output = module.forward_inference({SampleBatch.OBS: obs_tensor})
-            logits = output["action_dist_inputs"]
+        for i in range(eval_iterations):
 
-            num_loc_actions = self.config["experiment"]["num_locations"] + 1
-            num_dur_actions = self.config["experiment"]["max_wait"] + 1
-    
-            loc_logits = logits[:, :num_loc_actions]
-            dur_logits = logits[:, num_loc_actions:num_loc_actions + num_dur_actions]
-    
-            loc_dist = torch.distributions.Categorical(logits=loc_logits)
-            dur_dist = torch.distributions.Categorical(logits=dur_logits)
-    
-            loc_actions = loc_dist.sample().cpu().numpy()
-            dur_actions = dur_dist.sample().cpu().numpy()
-    
-            actions = {
-                agent_id: np.array([loc, dur], dtype=np.int64)
-                for agent_id, loc, dur in zip(agent_ids, loc_actions, dur_actions)
-            }
-    
-            obs, rewards, terminateds, truncateds, infos = env.step(actions)
-            logging.info(f"Actions: {actions}")
-            total_reward += sum(rewards.values())      
-            
-            # --- Debug Ausgaben ---
-            base_env = env.env.unwrapped
-            logging.info(f"\n--- Step: {base_env.current_step} ---")
-            agents_in_nest = len(base_env.nesting_agents)
-            votes = [0 for _ in range(self.config["experiment"]["num_locations"])]
-            sampling_agents = [len(base_env.sampling_agents[l]) for l in range(self.config["experiment"]["num_locations"])]
+            env = self.create_env({})
+            obs, info = env.reset()
+            terminateds = {"__all__": False}
+            truncateds = {"__all__": False}
+            total_reward = 0
+            module = algo.get_module("shared_policy")
 
+            self.action_logger.info(f"+ Starting new run")
 
-            correct_voting_agents = 0
-            for agent in base_env.agent_objects:
-                if agent.current_vote is not None:
-                    votes[agent.current_vote] += 1
-                    if agent.current_vote == np.argmin(base_env.lambdas):
-                        correct_voting_agents += 1
+            # Actions have to be retrieved unneccessarily complicated over logits, because of 
+            # https://github.com/ray-project/ray/issues/40312
+            while not terminateds["__all__"] and not truncateds["__all__"]:
+                
+                agent_ids = list(obs.keys())
+                print("AGENT IDS: ", agent_ids)
+                obs_tensor = torch.from_numpy(np.array(list(obs.values()), dtype=np.float32))
+                output = module.forward_inference({SampleBatch.OBS: obs_tensor})
+                logits = output["action_dist_inputs"]
 
-            logging.info(f"Agents in Nest: {agents_in_nest}")
-            logging.info(f"Agents in Sampling Locs: {sampling_agents}")
-            logging.info(f"Votes: {votes}")
-            logging.info(f"Lambdas: {base_env.lambdas}")
-            logging.info(f"Correct Voting Agents: {correct_voting_agents}")
-            logging.info(f"Consensus: {correct_voting_agents / base_env.config["experiment"]["num_agents"]} [Needs: {base_env.config["experiment"]["quorum_threshold"]}]")   
-            
-        print(f"\nTest abgeschlossen! Gesamt-Reward: {total_reward}")
-        algo.stop()
+                num_loc_actions = self.config["experiment"]["num_locations"] + 1
+                num_dur_actions = self.config["experiment"]["max_wait"] + 1
         
+                loc_logits = logits[:, :num_loc_actions]
+                dur_logits = logits[:, num_loc_actions:num_loc_actions + num_dur_actions]
+        
+
+                # Stochastic sampling
+        
+                #loc_dist = torch.distributions.Categorical(logits=loc_logits)
+                #dur_dist = torch.distributions.Categorical(logits=dur_logits)
+                #loc_actions = loc_dist.sample().cpu().numpy()
+                #dur_actions = dur_dist.sample().cpu().numpy()
+                
+                # Deterministic sampling
+                loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
+                dur_actions = torch.argmax(dur_logits, dim=1).cpu().numpy()
+                
+                actions = {
+                    agent_id: np.array([loc, dur], dtype=np.int64)
+                    for agent_id, loc, dur in zip(agent_ids, loc_actions, dur_actions)
+                }
+                self.action_logger.info(f"{agent_ids[0]},{loc_actions[0]},{dur_actions[0]}")
+        
+                obs, rewards, terminateds, truncateds, infos = env.step(actions)
+                total_reward += sum(rewards.values())      
+                
+                # --- Debug Ausgaben ---
+                base_env = env.env.unwrapped
+                logging.info(f"\n--- Step: {base_env.current_step} ---")
+                agents_in_nest = len(base_env.nesting_agents)
+                votes = [0 for _ in range(self.config["experiment"]["num_locations"])]
+                sampling_agents = [len(base_env.sampling_agents[l]) for l in range(self.config["experiment"]["num_locations"])]
+
+
+                correct_voting_agents = 0
+                for agent in base_env.agent_objects:
+                    if agent.current_vote is not None:
+                        votes[agent.current_vote] += 1
+                        if agent.current_vote == base_env.experiment_best_location:
+                            correct_voting_agents += 1
+
+                logging.info(f"Agents in Nest: {agents_in_nest}")
+                logging.info(f"Agents in Sampling Locs: {sampling_agents}")
+                logging.info(f"Votes: {votes}")
+                logging.info(f"Lambdas: {base_env.lambdas}")
+                logging.info(f"Correct Voting Agents: {correct_voting_agents}")
+                logging.info(f"Consensus: {correct_voting_agents / base_env.config["experiment"]["num_agents"]} [Needs: {base_env.config["experiment"]["quorum_threshold"]}]")   
+                
+            print(f"\nTest abgeschlossen! Gesamt-Reward: {total_reward}")
+            
+            steps_to_decision = base_env.current_step
+            correct_decision = base_env.swarm_decision == base_env.experiment_best_location
+            total_events_until_decision = sum([sum(agent.events_at_location) for agent in base_env.agent_objects])
+            events_experienced_per_agent = total_events_until_decision / self.config["experiment"]["num_agents"]        
+            lambda_difficulty = np.round((np.max(base_env.lambdas) - np.min(base_env.lambdas)) / np.max(base_env.lambdas), 3)
+            truncated = truncateds["__all__"]
+            labdas = base_env.lambdas
+
+            self.metric_logger.info(f"{steps_to_decision},{correct_decision},{total_events_until_decision},{events_experienced_per_agent},{lambda_difficulty},{truncated},{labdas}")
+            algo.stop()
+        
+    def setup_logger(self, name, log_file, mode, level=logging.INFO, fmt='%(message)s'):
+         handler = logging.FileHandler(log_file, mode=mode)
+         handler.setFormatter(logging.Formatter(fmt))
+         logger = logging.getLogger(name)
+         logger.setLevel(level)
+         logger.addHandler(handler)
+         logger.propagate = False
+         return logger

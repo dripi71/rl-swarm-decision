@@ -2,20 +2,26 @@ experiment:
   num_agents: 50
   num_locations: 2
   lambda_min: 0.1
-  lambda_max: 10
+  lambda_max: 1
   training: false
   travel_time: 10
   quorum_threshold: 0.7
   max_wait: 20
-  #
+  # (!) timesteps, not agent steps
   max_steps: 1000
   test_run_name: "Test_run_006"
   load_checkpoint: true
   training_iterations: 50
+  eval_iterations: 250
 
 rewards:
   reward_per_event: 0.0
   reward_for_correct_decision: 10
-  reward_for_wrong_decision: -10
+  reward_for_wrong_decision: -50
   solved_bonus_time_decay: 0.05
   progress_bonus: 1
+
+testing:
+  agents: [10,20,30,40,50,100,200,500, 1000, 2000, 5000, 10000]
+  episodes: [10, 20, 50, 100, 500, 1000, 2000, 5000, 10000, 50000]
+  locations: [2,3,4,5,10,20,50,100]

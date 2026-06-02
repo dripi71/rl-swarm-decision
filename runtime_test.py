@@ -4,12 +4,13 @@ import numpy as np
 from pettingzoo.test import api_test
 import time
 
-agents_amount_testing = [10,20,30,40,50,100,200,500, 1000, 2000, 5000, 10000]
-episodes_amount_testing = [10, 20, 50, 100, 500, 1000, 2000, 5000, 10000, 50000]
-locations_amount_testing = [2,3,4,5,10,20,50,100]
 
 with open("config/configuration.yaml", "r") as f:
     config = yaml.safe_load(f)
+
+agents_amount_testing = config["testing"]["agents"]
+episodes_amount_testing = config["testing"]["episodes"]
+locations_amount_testing = config["testing"]["locations"]
 
 # Override quorum_threshold to 2.0 (200%) so that the swarm never reaches consensus.
 # This prevents the environment from terminating early and allows testing the runtime over the full number of steps.
