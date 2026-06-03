@@ -16,3 +16,4 @@ class ActionTypes(IntEnum):
 class PredictionKeys:
     LOCATION = "location"
     DURATION_PARAMS = "duration_params"
+    VOTE = "vote"

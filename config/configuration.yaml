@@ -3,23 +3,30 @@ experiment:
   num_locations: 2
   lambda_min: 0.1
   lambda_max: 1
-  training: true
+  blue_env_lambda: 0.00005
+  red_env_lambda_easy: 0.0001
+  red_env_lambda_hard: 6.666666666666667e-5
+  current_hardness: "easy"
   travel_time: 10
   quorum_threshold: 0.7
   gamma_epsilon: 0.01
   # (!) timesteps, not agent steps
-  max_steps: 1000
-  test_run_name: "Test_run_08"
+  max_steps: 1e7
+  test_run_name: "Test_run_10"
   load_checkpoint: false
-  training_iterations: 50
-  eval_iterations: 250
+  training: true
+  training_iterations: 5
+  eval_iterations: 10
   base_seed: 462
 
 rewards:
   reward_per_event: 0.0
   reward_for_correct_decision: 10
   reward_for_wrong_decision: -50
-  solved_bonus_time_decay: 0.05
+  # 1e7, 1e7 * 5e-6 = 50
+  # solving bonus: solved_reward - steps * solved_bonus_time_decay 
+  # The solving bonus should be >=0 when reaching max steps, otherwise it penalizes correct solving
+  solved_bonus_time_decay: 1e-6
   progress_bonus: 1
 
 testing:

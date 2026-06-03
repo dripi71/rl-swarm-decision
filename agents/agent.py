@@ -12,20 +12,6 @@ class Agent:
         self.confidence = [0 for _ in range(self.num_locations)]
 
     def update_vote(self):
-        # if there are no timesteps at any location, the agent has no vote
-        if sum(self.timesteps_at_location) == 0:
-            self.current_vote = None
-            return
-        
-        quality_estimates = []
-        for i in range(self.num_locations):
-            a = self.timesteps_at_location[i]
-            b = self.events_at_location[i]
-            if a == 0:
-                quality_estimates.append(float('inf'))
-            else:
-                quality_estimates.append(b / a)
-
-        self.current_vote = int(np.argmin(quality_estimates))
+        pass
            
 

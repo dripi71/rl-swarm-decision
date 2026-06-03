@@ -7,6 +7,7 @@ from config.constants import QObjectIndices
 import numpy as np
 from agents.agent import Agent
 import logging
+import random
 
 
 class SwarmDecisionEnvironment(AECEnv):
@@ -45,6 +46,9 @@ class SwarmDecisionEnvironment(AECEnv):
                 PredictionKeys.DURATION_PARAMS: gym.spaces.Box(
                     low=-10.0, high=10.0, shape=(2,), dtype=np.float32
                 ),
+                PredictionKeys.VOTE: gym.spaces.Discrete(
+                    self.config["experiment"]["num_locations"] + 1
+                ),
             }) for agent in self.agents
         }
         
@@ -71,28 +75,30 @@ class SwarmDecisionEnvironment(AECEnv):
         self.last_progress = 0.0
         self.swarm_decision = None
         self.sampling_agents = [[] for _ in range(self.config["experiment"]["num_locations"])]
+        self.lambdas = self.generateLambdas()
+        self.experiment_best_location = np.argmin(self.lambdas)
         self.createLocationsAndAgents()
         self.rewards = { agent: 0 for agent in self.agents}
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
         self.terminations = { agent: False for agent in self.agents}
         self.truncations = { agent: False for agent in self.agents}
         self.infos = { agent: {} for agent in self.agents}
-        self.lambdas = self.generateLambdas()
     
     def generateLambdas(self):
-        step = 0.1
-        l_min = self.config["experiment"]["lambda_min"]
-        l_max = self.config["experiment"]["lambda_max"]
 
-        num_steps = int(round((l_max - l_min) / step + 1))
-        pool = np.linspace(l_min, l_max, num=num_steps)
-        amount = self.config["experiment"]["num_locations"]
+        if(self.config["experiment"]["current_hardness"] == "easy"):
+            red_loc_lambda = self.config["experiment"]["red_env_lambda_easy"]
+        else:
+            red_loc_lambda = self.config["experiment"]["red_env_lambda_hard"]
+        
+        blue_loc_lambda = self.config["experiment"]["blue_env_lambda"]
 
-        if amount > len(pool):
-            raise ValueError(
-                f"num_locations ({amount}) is greater than number of available lambdas ({len(pool)})"
-            )
-        return np.random.choice(pool, amount, replace=False)
+        blue_left = np.random.randint(0, 2)
+        if(blue_left):
+            return np.array([blue_loc_lambda, red_loc_lambda])
+        else:
+            return np.array([red_loc_lambda, blue_loc_lambda])
+    
 
     def step(self, action):
         if (
@@ -119,7 +125,6 @@ class SwarmDecisionEnvironment(AECEnv):
         elif current_location in self.locations:
             self.sampling_agents[current_location].remove(agent)
             # agent is finished with sampling -> update beliefs based on collected evidence
-            agent.update_vote()
 
         if(self.swarm_reached_decision()):
             return
@@ -128,6 +133,13 @@ class SwarmDecisionEnvironment(AECEnv):
         agent.next_location_duration = self._sample_gamma_duration(
             action[PredictionKeys.DURATION_PARAMS]
         )
+        
+        # Parse vote action
+        vote_action = action[PredictionKeys.VOTE]
+        if vote_action == 0:
+            agent.current_vote = None
+        else:
+            agent.current_vote = int(vote_action - 1)
         traveltime = self.calculate_travel_time(current_location, agent.next_location)
 
         if(agent.next_location == self.nest_loc_index):
@@ -164,7 +176,7 @@ class SwarmDecisionEnvironment(AECEnv):
             self.last_progress = progress
 
 
-        if self.current_step >= self.config["experiment"]["max_steps"]:
+        if self.current_step >= float(self.config["experiment"]["max_steps"]):
             for agent_id in self.agents:
                 self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]
             self.truncations = {agent: True for agent in self.agents}
@@ -354,7 +366,8 @@ class SwarmDecisionEnvironment(AECEnv):
         if self.swarm_decision is not None:
             if self.swarm_decision == self.experiment_best_location:
                 for agent_id in self.agents:
-                    self.rewards[agent_id] += self.config["rewards"]["reward_for_correct_decision"] - self.current_step * self.config["rewards"]["solved_bonus_time_decay"]
+                    decayed_reward = self.config["rewards"]["reward_for_correct_decision"] - self.current_step * self.config["rewards"]["solved_bonus_time_decay"]
+                    self.rewards[agent_id] += max(0.0, decayed_reward)
             else:
                 for agent_id in self.agents:
                     self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]

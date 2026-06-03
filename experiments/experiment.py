@@ -120,29 +120,33 @@ class Experiment:
                 obs_tensor = torch.from_numpy(np.array(list(obs.values()), dtype=np.float32))
                 output = module.forward_inference({SampleBatch.OBS: obs_tensor})
 
-                # action_dist_inputs layout for Dict(Discrete(N+1), Box(2,)):
-                #   [:N+1]     → location logits (Categorical)
-                #   [N+1:N+3]  → duration Gaussian means (mu_x1, mu_x2)
+                # action_dist_inputs layout for Dict(location: Discrete(N+1), duration_params: Box(2,), vote: Discrete(N+1)):
+                #   [:N+1]         → location logits (Categorical)
+                #   [N+1:N+3]      → duration Gaussian means (mu_x1, mu_x2)
+                #   [N+3:N+5]      → duration Gaussian log std devs
+                #   [N+5:N+5+N+1]  → vote logits (Categorical)
                 logits = output["action_dist_inputs"]
                 num_loc_actions = self.config["experiment"]["num_locations"] + 1
 
                 loc_logits  = logits[:, :num_loc_actions]
                 dur_means   = logits[:, num_loc_actions : num_loc_actions + 2]  # (batch, 2)
+                vote_logits = logits[:, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions]
 
                 # Deterministic location: argmax over Categorical logits
                 loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
                 # Deterministic duration: pass the raw means; environment applies softplus + Gamma
                 dur_params  = dur_means.cpu().numpy()  # shape (batch, 2)
+                # Deterministic vote: argmax over Categorical logits
+                vote_actions = torch.argmax(vote_logits, dim=1).cpu().numpy()
 
                 actions = {
                     agent_id: {
-                        "location":       np.int64(loc),
-                        "duration_params": np.array([dp[0], dp[1]], dtype=np.float32),
+                        "location":        np.int64(loc),
+                        "duration_params":  np.array([dp[0], dp[1]], dtype=np.float32),
+                        "vote":            np.int64(vote),
                     }
-                    for agent_id, loc, dp in zip(agent_ids, loc_actions, dur_params)
+                    for agent_id, loc, dp, vote in zip(agent_ids, loc_actions, dur_params, vote_actions)
                 }
-                self.action_logger.info(f"{agent_ids[0]},{loc_actions[0]},{dur_params[0][0]:.3f},{dur_params[0][1]:.3f}")
-        
                 obs, rewards, terminateds, truncateds, infos = env.step(actions)
                 total_reward += sum(rewards.values())      
                 
@@ -152,6 +156,10 @@ class Experiment:
                 agents_in_nest = len(base_env.nesting_agents)
                 votes = [0 for _ in range(self.config["experiment"]["num_locations"])]
                 sampling_agents = [len(base_env.sampling_agents[l]) for l in range(self.config["experiment"]["num_locations"])]
+
+                waiting_time = base_env._sample_gamma_duration(dur_params[0])
+                self.action_logger.info(f"{agent_ids[0]},{loc_actions[0]},{dur_params[0][0]:.3f},{dur_params[0][1]:.3f},{waiting_time}")
+        
 
 
                 correct_voting_agents = 0

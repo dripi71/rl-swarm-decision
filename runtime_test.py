@@ -23,9 +23,10 @@ with open("tests/runtime_test.csv", "w") as f:
         for episodes_amount in episodes_amount_testing:
 
             for locations_amount in locations_amount_testing:
+                if locations_amount != 2:
+                    continue
                 config["experiment"]["num_locations"] = locations_amount
-                
-                num_locations = config["experiment"]["num_locations"]
+                num_locations = locations_amount
 
                 #print("--- Initializing Swarm Environment ---")
 
@@ -56,14 +57,12 @@ with open("tests/runtime_test.csv", "w") as f:
                     else:
                         random_destination = np.random.randint(0, num_locations + 1)
                         random_dur_params = np.random.uniform(-3.0, 3.0, size=2).astype(np.float32)
-                        
-                        agent_obj = env.get_agent_by_id(agent_id)
-                        if np.random.random() < 0.3:
-                            agent_obj.current_vote = np.random.randint(0, num_locations)
+                        random_vote = np.random.randint(0, num_locations + 1)
 
                         action = {
-                            "location":       np.int64(random_destination),
-                            "duration_params": random_dur_params,
+                            "location":        np.int64(random_destination),
+                            "duration_params":  random_dur_params,
+                            "vote":            np.int64(random_vote),
                         }
                         
                         #print(f"Action Prompt: Agent wählt {random_destination} für {random_duration} Steps")
