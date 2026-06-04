@@ -126,7 +126,6 @@ class Experiment:
             while not terminateds["__all__"] and not truncateds["__all__"]:
                 
                 agent_ids = list(obs.keys())
-                print("AGENT IDS: ", agent_ids)
                 obs_tensor = torch.from_numpy(np.array(list(obs.values()), dtype=np.float32))
                 output = module.forward_inference({SampleBatch.OBS: obs_tensor})
 

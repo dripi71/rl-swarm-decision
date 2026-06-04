@@ -113,7 +113,6 @@ class SwarmDecisionEnvironment(AECEnv):
         self._clear_rewards()
 
         agent = self.get_agent_by_id(agent_id)
-
         current_location = agent.next_location
 
         if(current_location == self.nest_loc_index):
@@ -128,6 +127,10 @@ class SwarmDecisionEnvironment(AECEnv):
 
         if(self.swarm_reached_decision()):
             return
+
+        # agent has to pay cost for making a decision
+        # otherwise: NN spams decisions (micro steps)
+        self.rewards[agent_id] += self.config["rewards"]["decision_cost"]
 
         agent.next_location = action[PredictionKeys.LOCATION]
         agent.next_location_duration = self._sample_gamma_duration(

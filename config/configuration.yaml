@@ -23,6 +23,7 @@ rewards:
   reward_per_event: 0.0
   reward_for_correct_decision: 10
   reward_for_wrong_decision: -50
+  decision_cost: -0.001
   # 1e7, 1e7 * 5e-6 = 50
   # solving bonus: solved_reward - steps * solved_bonus_time_decay 
   # The solving bonus should be >=0 when reaching max steps, otherwise it penalizes correct solving
