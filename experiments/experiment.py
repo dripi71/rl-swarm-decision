@@ -68,6 +68,9 @@ class Experiment:
                         or result.get("sampler_results", {}).get("episode_reward_mean")
                         or "N/A")
             print(f"Iteration {i+1}/{training_iterations} | Mean Episode Reward: {reward}")
+            if i % 99 == 0:
+                algo.save(checkpoint_path)
+                print(f"Latest save: training iteration {i+1}")
 
         algo.stop()
         print("Training complete!")
