@@ -72,7 +72,7 @@ class Experiment:
                         or result.get("sampler_results", {}).get("episode_reward_mean")
                         or "N/A")
             print(f"Iteration {i+1}/{training_iterations} | Mean Episode Reward: {reward}")
-            if (i + 1) % 100 == 0:
+            if (i + 1) % 5 == 0:
                 checkpoint_train_iteration = initial_train_checkpoint + i + 1
                 filename = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_train_iteration)
                 algo.save(filename)

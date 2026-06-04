@@ -83,7 +83,7 @@ class SwarmDecisionEnvironment(AECEnv):
         self.terminations = { agent: False for agent in self.agents}
         self.truncations = { agent: False for agent in self.agents}
         self.infos = { agent: {} for agent in self.agents}
-    
+
     def generateLambdas(self):
 
         if(self.config["experiment"]["current_hardness"] == "easy"):
