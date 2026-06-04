@@ -10,9 +10,11 @@ class Agent:
         self.num_locations = config["experiment"]["num_locations"]
         self.timesteps_at_location = [0 for _ in range(self.num_locations)]
         self.events_at_location = [0 for _ in range(self.num_locations)]
+        # das wird gar nicht benutzt todo: remove
         self.confidence = [0 for _ in range(self.num_locations)]
 
     def update_vote(self):
+        #todo: delete calls of update_vote
         pass
            
 

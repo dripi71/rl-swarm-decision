@@ -136,7 +136,11 @@ class SwarmDecisionEnvironment(AECEnv):
         
         # Parse vote action
         vote_action = action[PredictionKeys.VOTE]
-        if vote_action == 0:
+
+        # Agent has to see at least one event at each location
+        # -> prevents NN from blind guessing
+
+        if vote_action == 0 or 0 in agent.events_at_location:
             agent.current_vote = None
         else:
             agent.current_vote = int(vote_action - 1)
