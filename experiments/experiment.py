@@ -38,9 +38,15 @@ class Experiment:
 
         register_env("swarm_decision_v1", self.create_env)
 
+        policy_file_name = os.path.abspath(self.config["experiment"]["test_run_name"])
+        initial_train_checkpoint = int(policy_file_name.split("checkpoint-")[-1]) if "checkpoint-" in policy_file_name else 0
+        last_saved_train_checkpoint = initial_train_checkpoint
+
+        train_seed = self.config["experiment"]["base_seed"] + initial_train_checkpoint
+
         config = (
             PPOConfig()
-            .debugging(seed=self.config["experiment"]["base_seed"])
+            .debugging(seed=train_seed)
             .environment("swarm_decision_v1")
             .framework("torch")
             .training(train_batch_size=16000)
@@ -50,13 +56,11 @@ class Experiment:
                 policy_mapping_fn=lambda agent_id, episode, **kwargs: "shared_policy",
             )
         )
-
         algo = config.build_algo()
 
         if self.config["experiment"]["load_checkpoint"]:
-            checkpoint_path = os.path.abspath(self.config["experiment"]["test_run_name"])
-            algo.restore(checkpoint_path)
-            print(f"Checkpoint loaded from: {checkpoint_path}")
+            algo.restore(policy_file_name)
+            print(f"Checkpoint loaded from: {policy_file_name}")
 
 
         training_iterations = self.config["experiment"]["training_iterations"]
@@ -68,14 +72,17 @@ class Experiment:
                         or result.get("sampler_results", {}).get("episode_reward_mean")
                         or "N/A")
             print(f"Iteration {i+1}/{training_iterations} | Mean Episode Reward: {reward}")
-            if i % 99 == 0:
-                algo.save(checkpoint_path)
-                print(f"Latest save: training iteration {i+1}")
+            if (i + 1) % 100 == 0:
+                checkpoint_train_iteration = initial_train_checkpoint + i + 1
+                filename = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_train_iteration)
+                algo.save(filename)
+                print(f"Latest save: training iteration {checkpoint_train_iteration}")
 
         algo.stop()
         print("Training complete!")
-        checkpoint_path = os.path.abspath(self.config["experiment"]["test_run_name"])
-        algo.save(checkpoint_path)
+        checkpoint_iteration = initial_train_checkpoint + training_iterations
+        policy_file_name = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_iteration)
+        algo.save(policy_file_name)
 
     def test(self):
         print("Started policy test")
