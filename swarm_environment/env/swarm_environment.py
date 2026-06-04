@@ -366,7 +366,7 @@ class SwarmDecisionEnvironment(AECEnv):
         if self.swarm_decision is not None:
             if self.swarm_decision == self.experiment_best_location:
                 for agent_id in self.agents:
-                    decayed_reward = self.config["rewards"]["reward_for_correct_decision"] - self.current_step * self.config["rewards"]["solved_bonus_time_decay"]
+                    decayed_reward = self.config["rewards"]["reward_for_correct_decision"] - self.current_step * float(self.config["rewards"]["solved_bonus_time_decay"])
                     self.rewards[agent_id] += max(0.0, decayed_reward)
             else:
                 for agent_id in self.agents:
