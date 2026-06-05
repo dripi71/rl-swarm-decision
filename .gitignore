@@ -2,3 +2,4 @@ __pycache__/
 venv/
 *Test_run_*/
 logs/
+job_outputs/

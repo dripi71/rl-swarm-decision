@@ -136,6 +136,8 @@ class SwarmDecisionEnvironment(AECEnv):
         agent.next_location_duration = self._sample_gamma_duration(
             action[PredictionKeys.DURATION_PARAMS]
         )
+        if(agent.next_location_duration > 100):
+            print(f"Large waiting duration detected: {agent.next_location_duration}")
         
         # Parse vote action
         vote_action = action[PredictionKeys.VOTE]
