@@ -44,7 +44,7 @@ class SwarmDecisionEnvironment(AECEnv):
                     self.config["experiment"]["num_locations"] + 1
                 ),
                 PredictionKeys.DURATION_PARAMS: gym.spaces.Box(
-                    low=-10.0, high=10.0, shape=(2,), dtype=np.float32
+                    low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32
                 ),
                 PredictionKeys.VOTE: gym.spaces.Discrete(
                     self.config["experiment"]["num_locations"] + 1
@@ -258,11 +258,21 @@ class SwarmDecisionEnvironment(AECEnv):
     def _sample_gamma_duration(self, duration_params):
         epsilon = self.config["experiment"]["gamma_epsilon"]
         x1, x2 = float(duration_params[0]), float(duration_params[1])
-        alpha = self._softplus(x1) + epsilon
-        beta  = self._softplus(x2) + epsilon
-        sample = np.random.gamma(shape=alpha, scale=1.0 / beta)
+        
+        # x1 controls the mean duration above min_sampling_duration
         min_duration = int(self.config["experiment"]["min_sampling_duration"])
+        mean_above_min = self._softplus(x1) * 10000.0
+        mean = min_duration + mean_above_min
+        
+        # x2 controls the shape (alpha) parameter
+        alpha = self._softplus(x2) + epsilon
+        
+        # mean = alpha * scale => scale = mean / alpha
+        scale = mean / alpha
+        
+        sample = np.random.gamma(shape=alpha, scale=scale)
         return max(min_duration, round(float(sample)))
+
 
     def render(self):
         pass

@@ -27,12 +27,16 @@ class Experiment:
         return PettingZooEnv(env)
 
     def run(self):
-        training = self.config["experiment"]["training"]
+        training = self.config["experiment"].get("training", True)
+        compare = self.config["experiment"].get("compare", False)
 
-        if training:
+        if compare:
+            self.compare_policies()
+        elif training:
             self.train()
         else:
             self.test()
+
 
     def train(self):
         print("Starting training with MAPPO (PPO + shared policy)")
@@ -109,6 +113,150 @@ class Experiment:
         checkpoint_iteration = initial_train_checkpoint + training_iterations
         policy_file_name = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_iteration)
         algo.save(policy_file_name)
+
+    def compare_policies(self):
+        print("="*60)
+        print("Starting Policy Comparison Suite")
+        print("="*60)
+
+        register_env("swarm_decision_v1", self.create_env)
+        base_seed = self.config["experiment"]["base_seed"]
+        eval_iterations = self.config["experiment"]["eval_iterations"]
+        mode = self.config.get("compare_policies", {}).get("mode", "both")
+
+        path_a = os.path.abspath(self.config["compare_policies"]["policy_a_path"])
+        path_b = os.path.abspath(self.config["compare_policies"]["policy_b_path"])
+
+        print(f"Loading Policy A from: {path_a}")
+        config_a = (
+            PPOConfig()
+            .debugging(seed=base_seed)
+            .environment("swarm_decision_v1")
+            .framework("torch")
+            .env_runners(num_env_runners=1)
+            .multi_agent(
+                policies={"shared_policy": (None, None, None, {})},
+                policy_mapping_fn=lambda agent_id, episode, **kwargs: "shared_policy",
+            )
+        )
+        algo_a = config_a.build_algo()
+        algo_a.restore(path_a)
+        module_a = algo_a.get_module("shared_policy")
+
+        print(f"Loading Policy B from: {path_b}")
+        config_b = (
+            PPOConfig()
+            .debugging(seed=base_seed)
+            .environment("swarm_decision_v1")
+            .framework("torch")
+            .env_runners(num_env_runners=1)
+            .multi_agent(
+                policies={"shared_policy": (None, None, None, {})},
+                policy_mapping_fn=lambda agent_id, episode, **kwargs: "shared_policy",
+            )
+        )
+        algo_b = config_b.build_algo()
+        algo_b.restore(path_b)
+        module_b = algo_b.get_module("shared_policy")
+
+        def get_actions(module, obs_dict, ids):
+            if not ids:
+                return {}
+            obs_tensor = torch.from_numpy(np.array([obs_dict[aid] for aid in ids], dtype=np.float32))
+            with torch.no_grad():
+                output = module.forward_inference({SampleBatch.OBS: obs_tensor})
+            logits = output["action_dist_inputs"]
+            num_loc_actions = self.config["experiment"]["num_locations"] + 1
+
+            loc_logits  = logits[:, :num_loc_actions]
+            dur_means   = logits[:, num_loc_actions : num_loc_actions + 2]
+            vote_logits = logits[:, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions]
+
+            loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
+            dur_params  = dur_means.cpu().numpy()
+            vote_actions = torch.argmax(vote_logits, dim=1).cpu().numpy()
+
+            return {
+                aid: {
+                    "location":        np.int64(loc),
+                    "duration_params":  np.array([dp[0], dp[1]], dtype=np.float32),
+                    "vote":            np.int64(vote),
+                }
+                for aid, loc, dp, vote in zip(ids, loc_actions, dur_params, vote_actions)
+            }
+
+        # -------------------------------------------------------------
+        # Independent Evaluation Mode
+        # -------------------------------------------------------------
+        print("\n" + "-"*60)
+        print("Running Independent Evaluation (Side-by-Side)")
+        print("-"*60)
+        
+        results = {"Policy A": [], "Policy B": []}
+        for label, module in [("Policy A", module_a), ("Policy B", module_b)]:
+            print(f"Evaluating {label}...")
+            for i in range(eval_iterations):
+                episode_seed = base_seed + i
+                self.set_global_seeds(episode_seed)
+
+                env = self.create_env({})
+                obs, info = env.reset(seed=episode_seed)
+                terminateds = {"__all__": False}
+                truncateds = {"__all__": False}
+                total_reward = 0
+
+                while not terminateds["__all__"] and not truncateds["__all__"]:
+                    agent_ids = list(obs.keys())
+                    actions = get_actions(module, obs, agent_ids)
+                    obs, rewards, terminateds, truncateds, infos = env.step(actions)
+                    total_reward += sum(rewards.values())
+
+                base_env = env.env.unwrapped
+                steps = base_env.current_step
+                correct = base_env.swarm_decision == base_env.experiment_best_location
+                truncated = truncateds["__all__"]
+                total_events = sum([sum(agent.events_at_location) for agent in base_env.agent_objects])
+                    
+                results[label].append({
+                    "steps": steps,
+                    "correct": correct,
+                    "truncated": truncated,
+                    "total_events": total_events,
+                    "reward": total_reward
+                })
+            
+            # Print Independent Results Table
+            print("\n### Independent Comparison Summary ###")
+            print("| Metric | Policy A | Policy B |")
+            print("| --- | --- | --- |")
+            for metric in ["Success Rate", "Avg Steps to Decision", "Truncation Rate", "Avg Events/Agent", "Avg Total Reward"]:
+                if metric == "Success Rate":
+                    val_a = np.mean([r["correct"] for r in results["Policy A"]]) * 100
+                    val_b = np.mean([r["correct"] for r in results["Policy B"]]) * 100
+                    print(f"| {metric} | {val_a:.1f}% | {val_b:.1f}% |")
+                elif metric == "Avg Steps to Decision":
+                    # average steps of non-truncated runs
+                    non_trunc_a = [r["steps"] for r in results["Policy A"] if not r["truncated"]]
+                    non_trunc_b = [r["steps"] for r in results["Policy B"] if not r["truncated"]]
+                    val_a = np.mean(non_trunc_a) if non_trunc_a else float('nan')
+                    val_b = np.mean(non_trunc_b) if non_trunc_b else float('nan')
+                    print(f"| {metric} | {val_a:.1f} | {val_b:.1f} |")
+                elif metric == "Truncation Rate":
+                    val_a = np.mean([r["truncated"] for r in results["Policy A"]]) * 100
+                    val_b = np.mean([r["truncated"] for r in results["Policy B"]]) * 100
+                    print(f"| {metric} | {val_a:.1f}% | {val_b:.1f}% |")
+                elif metric == "Avg Events/Agent":
+                    val_a = np.mean([r["total_events"] for r in results["Policy A"]]) / self.config["experiment"]["num_agents"]
+                    val_b = np.mean([r["total_events"] for r in results["Policy B"]]) / self.config["experiment"]["num_agents"]
+                    print(f"| {metric} | {val_a:.1f} | {val_b:.1f} |")
+                elif metric == "Avg Total Reward":
+                    val_a = np.mean([r["reward"] for r in results["Policy A"]])
+                    val_b = np.mean([r["reward"] for r in results["Policy B"]])
+                    print(f"| {metric} | {val_a:.2f} | {val_b:.2f} |")
+
+        # Cleanup algo resources
+        algo_a.stop()
+        algo_b.stop()
 
     def test(self):
         print("Started policy test")
@@ -193,6 +341,7 @@ class Experiment:
                 sampling_agents = [len(base_env.sampling_agents[l]) for l in range(self.config["experiment"]["num_locations"])]
 
                 waiting_time = base_env._sample_gamma_duration(dur_params[0])
+                self.action_logger.info(f"+ agentids, loc_actions, dur_params[1], dur_params[2], waiting_time")
                 self.action_logger.info(f"{agent_ids[0]},{loc_actions[0]},{dur_params[0][0]:.3f},{dur_params[0][1]:.3f},{waiting_time}")
         
 
@@ -209,7 +358,7 @@ class Experiment:
                 logging.info(f"Votes: {votes}")
                 logging.info(f"Lambdas: {base_env.lambdas}")
                 logging.info(f"Correct Voting Agents: {correct_voting_agents}")
-                logging.info(f"Consensus: {correct_voting_agents / base_env.config["experiment"]["num_agents"]} [Needs: {base_env.config["experiment"]["quorum_threshold"]}]")   
+                logging.info(f"Consensus: {correct_voting_agents / base_env.config['experiment']['num_agents']} [Needs: {base_env.config['experiment']['quorum_threshold']}]")   
                 
             print(f"\nTest abgeschlossen! Gesamt-Reward: {total_reward}")
             
@@ -308,7 +457,7 @@ class Experiment:
                 logging.info(f"Votes: {votes}")
                 logging.info(f"Lambdas: {base_env.lambdas}")
                 logging.info(f"Correct Voting Agents: {correct_voting_agents}")
-                logging.info(f"Consensus: {correct_voting_agents / base_env.config["experiment"]["num_agents"]} [Needs: {base_env.config["experiment"]["quorum_threshold"]}]")   
+                logging.info(f"Consensus: {correct_voting_agents / base_env.config['experiment']['num_agents']} [Needs: {base_env.config['experiment']['quorum_threshold']}]")   
                 
             print(f"\nTest abgeschlossen! Gesamt-Reward: {total_reward}")
             
