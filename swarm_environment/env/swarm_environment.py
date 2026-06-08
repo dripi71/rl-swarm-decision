@@ -115,16 +115,6 @@ class SwarmDecisionEnvironment(AECEnv):
         agent = self.get_agent_by_id(agent_id)
         current_location = agent.next_location
 
-        if(current_location == self.nest_loc_index):
-            # agent was in Nest
-            self.nesting_agents.remove(agent)
-            # agent takes beliefs of other nesting agents into account
-            self.influence_agent(agent)
-
-        elif current_location in self.locations:
-            self.sampling_agents[current_location].remove(agent)
-            # agent is finished with sampling -> update beliefs based on collected evidence
-
         if(self.swarm_reached_decision()):
             return
 
@@ -132,23 +122,20 @@ class SwarmDecisionEnvironment(AECEnv):
         # otherwise: NN spams decisions (micro steps)
         self.rewards[agent_id] += self.config["rewards"]["decision_cost"]
 
+        # ++ PREDICTIONS OF NEURAL NETWORK ++
         agent.next_location = action[PredictionKeys.LOCATION]
         agent.next_location_duration = self._sample_gamma_duration(
             action[PredictionKeys.DURATION_PARAMS]
         )
-        # Parse vote action
+        # if vote_action == nest_loc_index -> No vote
         vote_action = action[PredictionKeys.VOTE]
 
-        # Agent has to see at least one event at each location
-        # -> prevents NN from blind guessing
-
-
-        # if vote_action == 0 or agent.events_at_location[vote_action - 1] == 0:
-
-        if vote_action == 0 or agent.events_at_location[vote_action - 1] == 0:
+        # the agent can only vote if it has seen at least one event (experienced by itself or shared by agents in the nest)
+        # this prevents the agent from guessing a location without any evidence
+        if vote_action == self.nest_loc_index or agent.events_at_location[vote_action] == 0:
             agent.current_vote = None
         else:
-            agent.current_vote = int(vote_action - 1)
+            agent.current_vote = int(vote_action)
         traveltime = self.calculate_travel_time(current_location, agent.next_location)
 
         if(agent.next_location == self.nest_loc_index):
@@ -157,13 +144,10 @@ class SwarmDecisionEnvironment(AECEnv):
             self.prio_Q.add([agent.id, ActionTypes.SAMPLING, self.current_step + traveltime])
 
 
-        ## Reward system
         next_event = self.prio_Q.pop()
-        while(not self.needs_prediction(next_event)):
+        # If the next event does not need a prediction, we can process it now
+        while(next_event[QObjectIndices.EVENTTYPE] != ActionTypes.PREDICT_ACTION):
             self.process_deterministic_event(next_event)
-            # after each deterministic event, check if swarm has reached a decision
-            if(self.swarm_reached_decision()):
-                return
             next_event = self.prio_Q.pop()
 
         # Next event that needs a prediction
@@ -211,9 +195,12 @@ class SwarmDecisionEnvironment(AECEnv):
         loc_obs[agent.next_location] = 1.0
         quality_estimates = np.zeros(num_locations, dtype=np.float32)
         for i in range(num_locations):
-            a = agent.timesteps_at_location[i]
-            b = agent.events_at_location[i]
-            quality_estimates[i] = b / (a + 1)
+            timesteps = agent.timesteps_at_location[i]
+            events = agent.events_at_location[i]
+            # priors, otherwise when 0 events -> looks like perfect location
+            alpha_0 = 1.0
+            beta_0 = 1.0
+            quality_estimates[i] = (events + alpha_0) / (timesteps + beta_0)
         self_vote = np.zeros(num_locations, dtype=np.float32)
         if (agent.current_vote is not None):
             self_vote[agent.current_vote] = 1.0
@@ -261,6 +248,7 @@ class SwarmDecisionEnvironment(AECEnv):
         
         # x1 controls the mean duration above min_sampling_duration
         min_duration = int(self.config["experiment"]["min_sampling_duration"])
+        # factor of 10000, otherwise changes are not very feelable for the agent
         mean_above_min = self._softplus(x1) * 10000.0
         mean = min_duration + mean_above_min
         
@@ -279,12 +267,7 @@ class SwarmDecisionEnvironment(AECEnv):
 
     def close(self):
         pass
-
-    def needs_prediction(self, event):
-        # The agent only needs a prediciton if it finished nesting or sampling
-        # otherwise the next step(s) are deterministic (e.g. traveling to the location)
-        return event[QObjectIndices.EVENTTYPE] in [ActionTypes.NESTING_FINISHED, ActionTypes.SAMPLING_FINISHED]
-    
+        
     def calculate_travel_time(self, location1, location2):
         if(location1 == location2):
             # Takes one step in order to prevent freezing time
@@ -320,13 +303,20 @@ class SwarmDecisionEnvironment(AECEnv):
                 agent.timesteps_at_location[agent.next_location] += next_location_duration
                 nextEvent = [current_agent_id, ActionTypes.SAMPLING_FINISHED, self.current_step + next_location_duration]
                 self.prio_Q.add(nextEvent)
+            case ActionTypes.NESTING_FINISHED:
+                self.nesting_agents.remove(current_agent_id)
+                self.influence_agent(current_agent_id)
+                nextEvent = [current_agent_id, ActionTypes.PREDICT_ACTION, self.current_step + 1]
+                self.prio_Q.add(nextEvent)
+            case ActionTypes.SAMPLING_FINISHED:
+                self.sampling_agents[event[QObjectIndices.AGENTID]].remove(current_agent_id)
+                nextEvent = [current_agent_id, ActionTypes.PREDICT_ACTION, self.current_step + 1]
+                self.prio_Q.add(nextEvent)
             case ActionTypes.LOCATION_EVENT:
                 location_id = event[QObjectIndices.AGENTID]
                 for agent in self.sampling_agents[location_id]:
                     agent.events_at_location[location_id] += 1
                     self.rewards[agent.id] += self.config["rewards"]["reward_per_event"]
-                    # information update -> update belief
-                    agent.update_vote()
                 delay = max(1, round(np.random.exponential(scale=1.0 / self.lambdas[location_id])))
                 self.prio_Q.add([location_id, ActionTypes.LOCATION_EVENT, self.current_step + delay])
 
@@ -346,6 +336,7 @@ class SwarmDecisionEnvironment(AECEnv):
 
     def check_consensus(self):
         quorum_threshold = self.config["experiment"]["quorum_threshold"]
+        assert(quorum_threshold > 0.5, "Quorum threshold must be strictly greater than 0.5")
         num_agents = self.config["experiment"]["num_agents"]
         required_votes = num_agents * quorum_threshold
         votes = {loc: 0 for loc in range(self.config["experiment"]["num_locations"])}
@@ -363,31 +354,30 @@ class SwarmDecisionEnvironment(AECEnv):
         return None
     
     def influence_agent(self, agent):
-        # DMMD
+        # DMMD belief sharing
         if len(self.nesting_agents) == 0:
             return
             
         for location in range(self.config["experiment"]["num_locations"]):
-            a = agent.timesteps_at_location[location]
-            b = agent.events_at_location[location]
+            a = agent.events_at_location[location]
+            b = agent.timesteps_at_location[location]
 
-            a_others = sum(nesting_agent.timesteps_at_location[location] for nesting_agent in self.nesting_agents)
-            b_others = sum(nesting_agent.events_at_location[location] for nesting_agent in self.nesting_agents)
+            a_others = sum(nesting_agent.events_at_location[location] for nesting_agent in self.nesting_agents)
+            b_others = sum(nesting_agent.timesteps_at_location[location] for nesting_agent in self.nesting_agents)
             
-            a_others_avg = a_others/len(self.nesting_agents)
             b_others_avg = b_others/len(self.nesting_agents)
+            a_others_avg = a_others/len(self.nesting_agents)
 
-            agent.timesteps_at_location[location] = (a + a_others_avg) / 2
-            agent.events_at_location[location] = (b + b_others_avg) / 2
+            agent.events_at_location[location] = (a + a_others_avg) / 2
+            agent.timesteps_at_location[location] = (b + b_others_avg) / 2
         
-        agent.update_vote()
     def swarm_reached_decision(self):
         self.swarm_decision = self.check_consensus()
         if self.swarm_decision is not None:
             if self.swarm_decision == self.experiment_best_location:
                 for agent_id in self.agents:
                     decayed_reward = self.config["rewards"]["reward_for_correct_decision"] - self.current_step * float(self.config["rewards"]["solved_bonus_time_decay"])
-                    self.rewards[agent_id] += max(0.0, decayed_reward)
+                    self.rewards[agent_id] += max(0.5, decayed_reward)
             else:
                 for agent_id in self.agents:
                     self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]

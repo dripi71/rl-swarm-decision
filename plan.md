@@ -32,3 +32,6 @@ Runs evaluierbar machen:
 - Plotten
 - Mit random agenten vergleichen
 - Mit Bayes Agenten vergleichen
+
+
+Reward time decay: eventuell nicht linearer abfall, nach geeigneter Funktion suchen

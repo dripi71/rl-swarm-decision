@@ -11,7 +11,8 @@ class ActionTypes(IntEnum):
     NESTING_FINISHED = 1
     SAMPLING = 2
     SAMPLING_FINISHED = 3
-    LOCATION_EVENT = 4
+    PREDICT_ACTION = 4
+    LOCATION_EVENT = 5
 
 class PredictionKeys:
     LOCATION = "location"

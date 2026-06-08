@@ -13,13 +13,19 @@ experiment:
   # (!) timesteps, not agent steps
   max_steps: 1e6
   min_sampling_duration: 2000
-  test_run_name: "run_Easy_democrat_checkpoint-50"
+  test_run_name: "run_Easy_democrat_checkpoint-100"
   training: false
+  compare: true
   load_checkpoint: true
   training_iterations: 800
   eval_iterations: 20
   base_seed: 462
-  entropy_coeff: 0.0
+  entropy_coeff: 0.001
+
+compare_policies:
+  policy_a_path: "run_Easy_democrat_checkpoint-100"
+  policy_b_path: "run_Easy_democrat_checkpoint-50"
+
 
 rewards:
   reward_per_event: 0.0

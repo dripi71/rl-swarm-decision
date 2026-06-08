@@ -68,7 +68,7 @@ class Experiment:
         algo = config.build_algo()
 
         if self.config["experiment"]["load_checkpoint"]:
-            algo.restore(policy_file_name)
+            algo.restore(f"/policies/{policy_file_name}")
             print(f"Checkpoint loaded from: {policy_file_name}")
 
 
@@ -105,14 +105,14 @@ class Experiment:
             if (i + 1) % 50 == 0:
                 checkpoint_train_iteration = initial_train_checkpoint + i + 1
                 filename = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_train_iteration)
-                algo.save(filename)
+                algo.save(f"/policies/{filename}")
                 print(f"Latest save: training iteration {checkpoint_train_iteration}")
 
         algo.stop()
         print("Training complete!")
         checkpoint_iteration = initial_train_checkpoint + training_iterations
         policy_file_name = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_iteration)
-        algo.save(policy_file_name)
+        algo.save(f"/policies/{policy_file_name}")
 
     def compare_policies(self):
         print("="*60)
@@ -276,7 +276,7 @@ class Experiment:
         )
         algo = config.build_algo()
         checkpoint_path = os.path.abspath(self.config["experiment"]["test_run_name"])
-        algo.restore(checkpoint_path)
+        algo.restore(f"/policies/{checkpoint_path}")
         print(f"Checkpoint geladen von: {checkpoint_path}")
 
         eval_iterations = self.config["experiment"]["eval_iterations"]
