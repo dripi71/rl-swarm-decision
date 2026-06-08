@@ -13,10 +13,10 @@ experiment:
   # (!) timesteps, not agent steps
   max_steps: 1e6
   min_sampling_duration: 2000
-  test_run_name: "run_Easy_democrat_checkpoint-100"
-  training: false
-  compare: true
-  load_checkpoint: true
+  test_run_name: "run_Easy_major_checkpoint-0"
+  training: true
+  compare: false
+  load_checkpoint: false
   training_iterations: 800
   eval_iterations: 20
   base_seed: 462
