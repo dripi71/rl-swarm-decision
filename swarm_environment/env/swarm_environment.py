@@ -144,7 +144,7 @@ class SwarmDecisionEnvironment(AECEnv):
             self.prio_Q.add([agent.id, ActionTypes.SAMPLING, self.current_step + traveltime])
 
 
-               num_agents = len(self.agents)
+        num_agents = len(self.agents)
         votes_for_best_loc = sum( 1 for a in self.agent_objects if a.current_vote == self.experiment_best_location)
         progress = votes_for_best_loc / num_agents
 
@@ -223,7 +223,10 @@ class SwarmDecisionEnvironment(AECEnv):
             # agents is reserved by pettingzoo, only list ids here
             self.agents.append(i)
             # create own agent object list
-            self.agent_objects.append(Agent(i, self.config))
+            agent = Agent(i, self.config)
+            self.agent_objects.append(agent)
+            agent.next_location = self.nest_loc_index
+            self.nesting_agents.append(agent)
             self.prio_Q.add([i, ActionTypes.NESTING_FINISHED, 0])
         
         for i in range(self.config["experiment"]["num_locations"]):
@@ -302,12 +305,14 @@ class SwarmDecisionEnvironment(AECEnv):
                 nextEvent = [current_agent_id, ActionTypes.SAMPLING_FINISHED, self.current_step + next_location_duration]
                 self.prio_Q.add(nextEvent)
             case ActionTypes.NESTING_FINISHED:
-                self.nesting_agents.remove(current_agent_id)
-                self.influence_agent(current_agent_id)
+                agent = self.get_agent_by_id(current_agent_id)
+                self.nesting_agents.remove(agent)
+                self.influence_agent(agent)
                 nextEvent = [current_agent_id, ActionTypes.PREDICT_ACTION, self.current_step + 1]
                 self.prio_Q.add(nextEvent)
             case ActionTypes.SAMPLING_FINISHED:
-                self.sampling_agents[event[QObjectIndices.AGENTID]].remove(current_agent_id)
+                agent = self.get_agent_by_id(current_agent_id)
+                self.sampling_agents[agent.next_location].remove(agent)
                 nextEvent = [current_agent_id, ActionTypes.PREDICT_ACTION, self.current_step + 1]
                 self.prio_Q.add(nextEvent)
             case ActionTypes.LOCATION_EVENT:
