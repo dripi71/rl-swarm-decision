@@ -144,18 +144,7 @@ class SwarmDecisionEnvironment(AECEnv):
             self.prio_Q.add([agent.id, ActionTypes.SAMPLING, self.current_step + traveltime])
 
 
-        next_event = self.prio_Q.pop()
-        # If the next event does not need a prediction, we can process it now
-        while(next_event[QObjectIndices.EVENTTYPE] != ActionTypes.PREDICT_ACTION):
-            self.process_deterministic_event(next_event)
-            next_event = self.prio_Q.pop()
-
-        # Next event that needs a prediction
-        self.agent_selection = next_event[QObjectIndices.AGENTID]
-        self.current_step = next_event[QObjectIndices.ACTIONTIME]
-
-        
-        num_agents = len(self.agents)
+               num_agents = len(self.agents)
         votes_for_best_loc = sum( 1 for a in self.agent_objects if a.current_vote == self.experiment_best_location)
         progress = votes_for_best_loc / num_agents
 
@@ -168,7 +157,12 @@ class SwarmDecisionEnvironment(AECEnv):
                     self.rewards[agent_id] += (progress - self.last_progress) * self.config["rewards"]["progress_bonus"]
             self.last_progress = progress
 
-
+        next_event = self.prio_Q.pop()
+        # If the next event does not need a prediction, we can process it now
+        while(next_event[QObjectIndices.EVENTTYPE] != ActionTypes.PREDICT_ACTION):
+            self.process_deterministic_event(next_event)
+            next_event = self.prio_Q.pop()
+        
         if self.current_step >= float(self.config["experiment"]["max_steps"]):
             for agent_id in self.agents:
                 self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]
@@ -178,6 +172,10 @@ class SwarmDecisionEnvironment(AECEnv):
             return
 
         self._accumulate_rewards()
+
+        # Next event that needs a prediction (prepare for next step)
+        self.agent_selection = next_event[QObjectIndices.AGENTID]
+        self.current_step = next_event[QObjectIndices.ACTIONTIME]
                 
         
     def observation_space(self, agent):
