@@ -8,6 +8,7 @@ import os
 import numpy as np
 import torch
 import logging
+import math
 import random
 
 class Experiment:
@@ -35,6 +36,7 @@ class Experiment:
 
     def train(self):
         print("Starting training with MAPPO (PPO + shared policy)")
+        print("Run name: ", self.config["experiment"]["test_run_name"])
 
         register_env("swarm_decision_v1", self.create_env)
 
@@ -49,8 +51,11 @@ class Experiment:
             .debugging(seed=train_seed)
             .environment("swarm_decision_v1")
             .framework("torch")
-            .training(train_batch_size=16000)
-            .env_runners(num_env_runners=16)
+            .training(
+                train_batch_size=60000,
+                entropy_coeff=self.config["experiment"]["entropy_coeff"]
+            )
+            .env_runners(num_env_runners=60)
             .multi_agent(
                 policies={"shared_policy": (None, None, None, {})},
                 policy_mapping_fn=lambda agent_id, episode, **kwargs: "shared_policy",
@@ -67,11 +72,32 @@ class Experiment:
 
         for i in range(training_iterations):
             result = algo.train()
-            reward = (result.get("env_runners", {}).get("episode_return_mean")
-                        or result.get("episode_reward_mean")
-                        or result.get("sampler_results", {}).get("episode_reward_mean")
-                        or "episode still running...")
-            print(f"Iteration {i+1}/{training_iterations} | Mean Episode Reward: {reward}")
+            raw = result.get("env_runners", {}).get("episode_return_mean")
+            if raw is None or (isinstance(raw, float) and math.isnan(raw)):
+                raw = result.get("episode_reward_mean")
+            if raw is None or (isinstance(raw, float) and math.isnan(raw)):
+                raw = result.get("sampler_results", {}).get("episode_reward_mean")
+            reward = raw if raw is not None else "episode still running..."
+
+            # Extract learner stats (entropy & entropy_coeff)
+            info = result.get("info", {})
+            learner_info = info.get("learner", {}).get("shared_policy", {})
+            if not learner_info:
+                learner_info = info.get("learner", {})
+            learner_stats = learner_info.get("learner_stats", {})
+            entropy = learner_stats.get("entropy")
+            if entropy is None:
+                entropy = learner_info.get("entropy", "N/A")
+            curr_entropy_coeff = learner_stats.get("entropy_coeff")
+            if curr_entropy_coeff is None:
+                curr_entropy_coeff = learner_info.get("entropy_coeff", "N/A")
+
+            # Format to 4 decimal places if float
+            entropy_str = f"{entropy:.4f}" if isinstance(entropy, float) else str(entropy)
+            coeff_str = f"{curr_entropy_coeff:.4f}" if isinstance(curr_entropy_coeff, float) else str(curr_entropy_coeff)
+
+            print(f"Iteration {i+1}/{training_iterations} | Mean Episode Reward: {reward} | Entropy: {entropy_str} | Entropy Coeff: {coeff_str}")
+
             if (i + 1) % 50 == 0:
                 checkpoint_train_iteration = initial_train_checkpoint + i + 1
                 filename = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_train_iteration)
@@ -214,4 +240,86 @@ class Experiment:
         torch.cuda.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
+
+    def run_bayes_baseline_test(self):
+        print("Started baseline test")
+        register_env("swarm_decision_v1", self.create_env)
+        base_seed = self.config["experiment"]["base_seed"]
+
+        eval_iterations = self.config["experiment"]["eval_iterations"]
+        
+
+        for i in range(eval_iterations):
+            episode_seed = base_seed + i
+            self.set_global_seeds(episode_seed)
+
+            env = self.create_env({})
+            obs, info = env.reset(seed=episode_seed)
+            terminateds = {"__all__": False}
+            truncateds = {"__all__": False}
+            total_reward = 0
+
+            self.action_logger.info(f"+ Starting new run")
+
+            num_loc_actions = self.config["experiment"]["num_locations"] + 1
+
+           
+            while not terminateds["__all__"] and not truncateds["__all__"]:
+                
+                agent_ids = list(obs.keys())
+                obs_tensor = torch.from_numpy(np.array(list(obs.values()), dtype=np.float32))
+                
+
+
+
+
+                actions = {
+                    agent_id: {
+                        "location":        np.int64(loc),
+                        "duration_params":  np.array([dp[0], dp[1]], dtype=np.float32),
+                        "vote":            np.int64(vote),
+                    }
+                    for agent_id, loc, dp, vote in zip(agent_ids, loc_actions, dur_params, vote_actions)
+                }
+                obs, rewards, terminateds, truncateds, infos = env.step(actions)
+                total_reward += sum(rewards.values())      
+                
+                # --- Debug Ausgaben ---
+                base_env = env.env.unwrapped
+                logging.info(f"\n--- Step: {base_env.current_step} ---")
+                agents_in_nest = len(base_env.nesting_agents)
+                votes = [0 for _ in range(self.config["experiment"]["num_locations"])]
+                sampling_agents = [len(base_env.sampling_agents[l]) for l in range(self.config["experiment"]["num_locations"])]
+
+                waiting_time = base_env._sample_gamma_duration(dur_params[0])
+                self.action_logger.info(f"{agent_ids[0]},{loc_actions[0]},{dur_params[0][0]:.3f},{dur_params[0][1]:.3f},{waiting_time}")
+        
+
+
+                correct_voting_agents = 0
+                for agent in base_env.agent_objects:
+                    if agent.current_vote is not None:
+                        votes[agent.current_vote] += 1
+                        if agent.current_vote == base_env.experiment_best_location:
+                            correct_voting_agents += 1
+
+                logging.info(f"Agents in Nest: {agents_in_nest}")
+                logging.info(f"Agents in Sampling Locs: {sampling_agents}")
+                logging.info(f"Votes: {votes}")
+                logging.info(f"Lambdas: {base_env.lambdas}")
+                logging.info(f"Correct Voting Agents: {correct_voting_agents}")
+                logging.info(f"Consensus: {correct_voting_agents / base_env.config["experiment"]["num_agents"]} [Needs: {base_env.config["experiment"]["quorum_threshold"]}]")   
+                
+            print(f"\nTest abgeschlossen! Gesamt-Reward: {total_reward}")
+            
+            steps_to_decision = base_env.current_step
+            correct_decision = base_env.swarm_decision == base_env.experiment_best_location
+            total_events_until_decision = sum([sum(agent.events_at_location) for agent in base_env.agent_objects])
+            events_experienced_per_agent = total_events_until_decision / self.config["experiment"]["num_agents"]        
+            lambda_difficulty = np.round((np.max(base_env.lambdas) - np.min(base_env.lambdas)) / np.max(base_env.lambdas), 3)
+            truncated = truncateds["__all__"]
+            lambdas = base_env.lambdas
+
+            self.metric_logger.info(f"{episode_seed},{steps_to_decision},{correct_decision},{total_events_until_decision},{events_experienced_per_agent},{lambda_difficulty},{truncated},{lambdas}")
+            algo.stop()
             

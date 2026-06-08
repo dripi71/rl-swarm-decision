@@ -12,12 +12,14 @@ experiment:
   gamma_epsilon: 0.01
   # (!) timesteps, not agent steps
   max_steps: 1e6
-  test_run_name: "run_Easy_dc_checkpoint-800"
+  min_sampling_duration: 2000
+  test_run_name: "run_Easy_democrat_checkpoint-50"
   training: false
   load_checkpoint: true
   training_iterations: 800
-  eval_iterations: 1
+  eval_iterations: 20
   base_seed: 462
+  entropy_coeff: 0.0
 
 rewards:
   reward_per_event: 0.0
@@ -27,7 +29,7 @@ rewards:
   # 1e7, 1e7 * 5e-6 = 50
   # solving bonus: solved_reward - steps * solved_bonus_time_decay 
   # The solving bonus should be >=0 when reaching max steps, otherwise it penalizes correct solving
-  solved_bonus_time_decay: 1e-6
+  solved_bonus_time_decay: 5e-7
   progress_bonus: 1
 
 testing:

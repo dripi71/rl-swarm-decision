@@ -136,16 +136,16 @@ class SwarmDecisionEnvironment(AECEnv):
         agent.next_location_duration = self._sample_gamma_duration(
             action[PredictionKeys.DURATION_PARAMS]
         )
-        if(agent.next_location_duration > 100):
-            print(f"Large waiting duration detected: {agent.next_location_duration}")
-        
         # Parse vote action
         vote_action = action[PredictionKeys.VOTE]
 
         # Agent has to see at least one event at each location
         # -> prevents NN from blind guessing
 
-        if vote_action == 0 or 0 in agent.events_at_location:
+
+        # if vote_action == 0 or agent.events_at_location[vote_action - 1] == 0:
+
+        if vote_action == 0 or agent.events_at_location[vote_action - 1] == 0:
             agent.current_vote = None
         else:
             agent.current_vote = int(vote_action - 1)
@@ -261,7 +261,8 @@ class SwarmDecisionEnvironment(AECEnv):
         alpha = self._softplus(x1) + epsilon
         beta  = self._softplus(x2) + epsilon
         sample = np.random.gamma(shape=alpha, scale=1.0 / beta)
-        return max(1, round(float(sample)))
+        min_duration = int(self.config["experiment"]["min_sampling_duration"])
+        return max(min_duration, round(float(sample)))
 
     def render(self):
         pass
