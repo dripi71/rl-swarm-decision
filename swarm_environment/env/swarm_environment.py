@@ -250,7 +250,7 @@ class SwarmDecisionEnvironment(AECEnv):
         # x1 controls the mean duration above min_sampling_duration
         min_duration = int(self.config["experiment"]["min_sampling_duration"])
         # factor of 10000, otherwise changes are not very feelable for the agent
-        mean_above_min = self._softplus(x1) * 10000.0
+        mean_above_min = self._softplus(x1) * 1000.0
         mean = min_duration + mean_above_min
         
         # x2 controls the shape (alpha) parameter
