@@ -44,7 +44,7 @@ class Experiment:
 
         register_env("swarm_decision_v1", self.create_env)
 
-        policy_file_name = os.path.abspath(self.config["experiment"]["test_run_name"])
+        policy_file_name = os.path.abspath(f"policies/{self.config['experiment']['test_run_name']}")
         initial_train_checkpoint = int(policy_file_name.split("checkpoint-")[-1]) if "checkpoint-" in policy_file_name else 0
         last_saved_train_checkpoint = initial_train_checkpoint
 
@@ -68,7 +68,7 @@ class Experiment:
         algo = config.build_algo()
 
         if self.config["experiment"]["load_checkpoint"]:
-            algo.restore(f"/policies/{policy_file_name}")
+            algo.restore(policy_file_name)
             print(f"Checkpoint loaded from: {policy_file_name}")
 
 
@@ -102,17 +102,17 @@ class Experiment:
 
             print(f"Iteration {i+1}/{training_iterations} | Mean Episode Reward: {reward} | Entropy: {entropy_str} | Entropy Coeff: {coeff_str}")
 
-            if (i + 1) % 50 == 0:
+            if (i + 1) % 3 == 0:
                 checkpoint_train_iteration = initial_train_checkpoint + i + 1
                 filename = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_train_iteration)
-                algo.save(f"/policies/{filename}")
+                algo.save(filename)
                 print(f"Latest save: training iteration {checkpoint_train_iteration}")
 
         algo.stop()
         print("Training complete!")
         checkpoint_iteration = initial_train_checkpoint + training_iterations
         policy_file_name = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_iteration)
-        algo.save(f"/policies/{policy_file_name}")
+        algo.save(policy_file_name)
 
     def compare_policies(self):
         print("="*60)
@@ -276,7 +276,7 @@ class Experiment:
         )
         algo = config.build_algo()
         checkpoint_path = os.path.abspath(self.config["experiment"]["test_run_name"])
-        algo.restore(f"/policies/{checkpoint_path}")
+        algo.restore(checkpoint_path)
         print(f"Checkpoint geladen von: {checkpoint_path}")
 
         eval_iterations = self.config["experiment"]["eval_iterations"]
