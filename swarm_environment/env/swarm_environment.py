@@ -434,7 +434,7 @@ class SwarmDecisionEnvironment(AECEnv):
             pass
 
     def _log_episode_summary(self, outcome):
-        if self.episode_count % 10 != 0:
+        if self.episode_count % 10 != 0 or self.config["experiment"]["training"] == False:
             return
 
         stats = self.episode_stats

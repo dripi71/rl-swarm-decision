@@ -56,7 +56,7 @@ class Experiment:
             .environment("swarm_decision_v1")
             .framework("torch")
             .training(
-                train_batch_size=60000,
+                train_batch_size=30000,
                 entropy_coeff=self.config["experiment"]["entropy_coeff"]
             )
             .env_runners(num_env_runners=60)
@@ -275,7 +275,7 @@ class Experiment:
             )
         )
         algo = config.build_algo()
-        checkpoint_path = os.path.abspath(self.config["experiment"]["test_run_name"])
+        checkpoint_path = os.path.abspath(f"policies/{self.config['experiment']['test_run_name']}")
         algo.restore(checkpoint_path)
         print(f"Checkpoint geladen von: {checkpoint_path}")
 

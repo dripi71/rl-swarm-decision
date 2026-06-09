@@ -11,12 +11,12 @@ experiment:
   quorum_threshold: 0.7
   gamma_epsilon: 0.01
   # (!) timesteps, not agent steps
-  max_steps: 1e6
+  max_steps: 5e5
   min_sampling_duration: 1000
-  test_run_name: "run_Easy_major_reward_update_checkpoint-100"
+  test_run_name: "run_Easy_major_reward_update_checkpoint-650"
   training: false
-  compare: true
-  load_checkpoint: false
+  compare: false
+  load_checkpoint: true
   training_iterations: 800
   eval_iterations: 20
   base_seed: 462
