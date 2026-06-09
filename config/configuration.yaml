@@ -12,31 +12,31 @@ experiment:
   gamma_epsilon: 0.01
   # (!) timesteps, not agent steps
   max_steps: 1e6
-  min_sampling_duration: 2000
-  test_run_name: "run_Easy_MajorRewUp_Grateful_checkpoint-0"
-  training: true
-  compare: false
+  min_sampling_duration: 1000
+  test_run_name: "run_Easy_major_reward_update_checkpoint-100"
+  training: false
+  compare: true
   load_checkpoint: false
   training_iterations: 800
   eval_iterations: 20
   base_seed: 462
-  entropy_coeff: 0.00
+  entropy_coeff: 0.001
 
 compare_policies:
-  policy_a_path: "run_Easy_democrat_checkpoint-100"
-  policy_b_path: "run_Easy_democrat_checkpoint-50"
+  policy_a_path: "run_Easy_major_reward_update_checkpoint-100"
+  policy_b_path: "run_Easy_major_reward_update_checkpoint-650"
 
 
 rewards:
   reward_per_event: 0.0
-  reward_for_correct_decision: 40
+  reward_for_correct_decision: 30
   reward_for_wrong_decision: -50
   decision_cost: -0.002
   # 1e7, 1e7 * 5e-6 = 50
   # solving bonus: solved_reward - steps * solved_bonus_time_decay 
   # The solving bonus should be >=0 when reaching max steps, otherwise it penalizes correct solving
   solved_bonus_time_decay: 5e-7
-  progress_bonus: 10
+  progress_bonus: 5
 
 testing:
   agents: [10,20,30,40,50,100,200,500, 1000, 2000, 5000, 10000]

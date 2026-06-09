@@ -102,7 +102,7 @@ class Experiment:
 
             print(f"Iteration {i+1}/{training_iterations} | Mean Episode Reward: {reward} | Entropy: {entropy_str} | Entropy Coeff: {coeff_str}")
 
-            if (i + 1) % 3 == 0:
+            if (i + 1) % 50 == 0:
                 checkpoint_train_iteration = initial_train_checkpoint + i + 1
                 filename = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_train_iteration)
                 algo.save(filename)
@@ -124,8 +124,8 @@ class Experiment:
         eval_iterations = self.config["experiment"]["eval_iterations"]
         mode = self.config.get("compare_policies", {}).get("mode", "both")
 
-        path_a = os.path.abspath(self.config["compare_policies"]["policy_a_path"])
-        path_b = os.path.abspath(self.config["compare_policies"]["policy_b_path"])
+        path_a = os.path.abspath(f"policies/{self.config['compare_policies']['policy_a_path']}")
+        path_b = os.path.abspath(f"policies/{self.config['compare_policies']['policy_b_path']}")
 
         print(f"Loading Policy A from: {path_a}")
         config_a = (

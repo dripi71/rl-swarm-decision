@@ -8,6 +8,7 @@ import numpy as np
 from agents.agent import Agent
 import logging
 import random
+import os
 
 
 class SwarmDecisionEnvironment(AECEnv):
@@ -63,6 +64,12 @@ class SwarmDecisionEnvironment(AECEnv):
 
         logging.basicConfig(filename="logs/last_run.txt", filemode="w", level=logging.INFO, format='%(message)s')
 
+        # Episode-level diagnostic logging
+        self.episode_count = 0
+        self._init_episode_stats()
+        self._training_log_path = "logs/training_episodes.csv"
+        self._write_log_header()
+
     def reset(self, seed=None, options=None):
         if seed is not None:
             np.random.seed(seed)
@@ -83,6 +90,8 @@ class SwarmDecisionEnvironment(AECEnv):
         self.terminations = { agent: False for agent in self.agents}
         self.truncations = { agent: False for agent in self.agents}
         self.infos = { agent: {} for agent in self.agents}
+        self.episode_count += 1
+        self._init_episode_stats()
 
     def generateLambdas(self):
 
@@ -130,12 +139,22 @@ class SwarmDecisionEnvironment(AECEnv):
         # if vote_action == nest_loc_index -> No vote
         vote_action = action[PredictionKeys.VOTE]
 
+        # Track episode stats
+        self.episode_stats["total_decisions"] += 1
+        self.episode_stats["location_choices"][agent.next_location] += 1
+        self.episode_stats["sampling_durations"].append(agent.next_location_duration)
+
         # the agent can only vote if it has seen at least one event (experienced by itself or shared by agents in the nest)
         # this prevents the agent from guessing a location without any evidence
-        if vote_action == self.nest_loc_index or agent.events_at_location[vote_action] == 0:
+        if vote_action == self.nest_loc_index:
             agent.current_vote = None
+            self.episode_stats["votes_no_vote"] += 1
+        elif agent.events_at_location[vote_action] == 0:
+            agent.current_vote = None
+            self.episode_stats["votes_blocked"] += 1
         else:
             agent.current_vote = int(vote_action)
+            self.episode_stats["votes_cast"] += 1
         traveltime = self.calculate_travel_time(current_location, agent.next_location)
 
         if(agent.next_location == self.nest_loc_index):
@@ -168,6 +187,7 @@ class SwarmDecisionEnvironment(AECEnv):
                 self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]
             self.truncations = {agent: True for agent in self.agents}
             logging.info(f"Maximum steps reached, truncated: {self.current_step}")
+            self._log_episode_summary("truncated")
             self._accumulate_rewards()
             return
 
@@ -250,7 +270,7 @@ class SwarmDecisionEnvironment(AECEnv):
         # x1 controls the mean duration above min_sampling_duration
         min_duration = int(self.config["experiment"]["min_sampling_duration"])
         # factor of 10000, otherwise changes are not very feelable for the agent
-        mean_above_min = self._softplus(x1) * 2000.0
+        mean_above_min = self._softplus(x1) * 1000.0
         mean = min_duration + mean_above_min
         
         # x2 controls the shape (alpha) parameter
@@ -381,10 +401,71 @@ class SwarmDecisionEnvironment(AECEnv):
                 for agent_id in self.agents:
                     decayed_reward = self.config["rewards"]["reward_for_correct_decision"] - self.current_step * float(self.config["rewards"]["solved_bonus_time_decay"])
                     self.rewards[agent_id] += max(0.5, decayed_reward)
+                self._log_episode_summary("correct")
             else:
                 for agent_id in self.agents:
                     self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]
+                self._log_episode_summary("wrong")
             self.terminations = { agent: True for agent in self.agents}
             self._accumulate_rewards()
             return True
         return False
+
+    def _init_episode_stats(self):
+        num_locs = self.config["experiment"]["num_locations"]
+        self.episode_stats = {
+            "total_decisions": 0,
+            "votes_cast": 0,
+            "votes_blocked": 0,
+            "votes_no_vote": 0,
+            "location_choices": [0] * (num_locs + 1),
+            "sampling_durations": [],
+        }
+
+    def _write_log_header(self):
+        os.makedirs(os.path.dirname(self._training_log_path), exist_ok=True)
+        try:
+            with open(self._training_log_path, 'x') as f:
+                f.write("episode,outcome,decision_loc,best_loc,steps,max_progress,"
+                        "total_decisions,votes_cast,votes_blocked,votes_no_vote,"
+                        "loc_choices,avg_duration,min_duration,max_duration,"
+                        "total_events,final_votes,lambdas\n")
+        except FileExistsError:
+            pass
+
+    def _log_episode_summary(self, outcome):
+        if self.episode_count % 10 != 0:
+            return
+
+        stats = self.episode_stats
+        durations = stats["sampling_durations"]
+        avg_dur = np.mean(durations) if durations else 0
+        min_dur = min(durations) if durations else 0
+        max_dur = max(durations) if durations else 0
+
+        total_events = sum(sum(a.events_at_location) for a in self.agent_objects)
+
+        num_locs = self.config["experiment"]["num_locations"]
+        final_votes = [0] * num_locs
+        no_vote_count = 0
+        for agent in self.agent_objects:
+            if agent.current_vote is not None:
+                final_votes[agent.current_vote] += 1
+            else:
+                no_vote_count += 1
+
+        decision_loc = self.swarm_decision if self.swarm_decision is not None else "none"
+
+        row = (f"{self.episode_count},{outcome},{decision_loc},{self.experiment_best_location},"
+               f"{self.current_step},{self.last_progress:.4f},"
+               f"{stats['total_decisions']},{stats['votes_cast']},"
+               f"{stats['votes_blocked']},{stats['votes_no_vote']},"
+               f"\"{stats['location_choices']}\",{avg_dur:.0f},{min_dur},{max_dur},"
+               f"{total_events:.1f},\"{final_votes}(no_vote={no_vote_count})\","
+               f"\"{list(self.lambdas)}\"\n")
+
+        try:
+            with open(self._training_log_path, 'a') as f:
+                f.write(row)
+        except Exception:
+            pass
