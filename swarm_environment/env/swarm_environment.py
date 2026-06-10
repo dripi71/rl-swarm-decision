@@ -147,8 +147,8 @@ class SwarmDecisionEnvironment(AECEnv):
             alpha_0 = self.config["experiment"]["prior_alpha_0"]
             beta_0 = self.config["experiment"]["prior_beta_0"]
 
-            events = agent.events_at_location
-            timesteps = agent.timesteps_at_location
+            events = np.array(agent.events_at_location, dtype=np.float32)
+            timesteps = np.array(agent.timesteps_at_location, dtype=np.float32)
             posterior_rate = (events + alpha_0) / (timesteps + beta_0)
             max_rate = (0 + alpha_0) / (1 + beta_0)
             quality_score = 1.0 - (posterior_rate / max_rate)
@@ -226,8 +226,8 @@ class SwarmDecisionEnvironment(AECEnv):
         alpha_0 = 1.0
         beta_0 = 1000.0
 
-        events = agent.events_at_location
-        timesteps = agent.timesteps_at_location
+        events = np.array(agent.events_at_location, dtype=np.float32)
+        timesteps = np.array(agent.timesteps_at_location, dtype=np.float32)
         
         posterior_rate = (events + alpha_0) / (timesteps + beta_0)
         relative_uncertainty = 1.0 / np.sqrt(events + alpha_0)
