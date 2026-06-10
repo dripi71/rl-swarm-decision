@@ -53,8 +53,8 @@ class SwarmDecisionEnvironment(AECEnv):
             }) for agent in self.agents
         }
         
-        # observation space: loc_obs (N+1) + quality_estimates (N) + self_vote (N) + nest_votes_ratio (N) + Agent ID (break obs symmetrie) = 4*N + 2
-        obs_dim = 4 * self.config["experiment"]["num_locations"] + 1 + 1
+        # observation space: loc_obs (N+1) + quality_score (N) + relative_uncertainty (N) + self_vote (N) + nest_votes_ratio (N) + Agent ID (break obs symmetrie) = 5*N + 2
+        obs_dim = 5 * self.config["experiment"]["num_locations"] + 1 + 1
         self.observation_spaces = {
             agent: gym.spaces.Box(low=0.0, high=np.inf, shape=(obs_dim,), dtype=np.float32) 
             for agent in self.agents
@@ -94,20 +94,16 @@ class SwarmDecisionEnvironment(AECEnv):
         self._init_episode_stats()
 
     def generateLambdas(self):
-
         if(self.config["experiment"]["current_hardness"] == "easy"):
             red_loc_lambda = self.config["experiment"]["red_env_lambda_easy"]
         else:
             red_loc_lambda = self.config["experiment"]["red_env_lambda_hard"]
-        
         blue_loc_lambda = self.config["experiment"]["blue_env_lambda"]
-
         blue_left = np.random.randint(0, 2)
         if(blue_left):
             return np.array([blue_loc_lambda, red_loc_lambda])
         else:
             return np.array([red_loc_lambda, blue_loc_lambda])
-    
 
     def step(self, action):
         if (
@@ -127,9 +123,6 @@ class SwarmDecisionEnvironment(AECEnv):
         if(self.swarm_reached_decision()):
             return
 
-        # agent has to pay cost for making a decision
-        # otherwise: NN spams decisions (micro steps)
-        self.rewards[agent_id] += self.config["rewards"]["decision_cost"]
 
         # ++ PREDICTIONS OF NEURAL NETWORK ++
         agent.next_location = action[PredictionKeys.LOCATION]
@@ -144,37 +137,31 @@ class SwarmDecisionEnvironment(AECEnv):
         self.episode_stats["location_choices"][agent.next_location] += 1
         self.episode_stats["sampling_durations"].append(agent.next_location_duration)
 
-        # the agent can only vote if it has seen at least one event (experienced by itself or shared by agents in the nest)
-        # this prevents the agent from guessing a location without any evidence
         if vote_action == self.nest_loc_index:
             agent.current_vote = None
             self.episode_stats["votes_no_vote"] += 1
-        elif agent.events_at_location[vote_action] == 0:
-            agent.current_vote = None
-            self.episode_stats["votes_blocked"] += 1
         else:
             agent.current_vote = int(vote_action)
             self.episode_stats["votes_cast"] += 1
+
         traveltime = self.calculate_travel_time(current_location, agent.next_location)
+
+        # save uncertainty before event
+        alpha_0 = 1.0
+        events_before = agent.events_at_location.copy()
+        agent.uncertainties_before = 1.0 / np.sqrt(events_before + alpha_0)
 
         if(agent.next_location == self.nest_loc_index):
             self.prio_Q.add([agent.id, ActionTypes.NESTING, self.current_step + traveltime])
         else:
+            # reward sampling at location
+            t_before = agent.timesteps_at_location[agent.next_location]
+            t_after = t_before + agent.next_location_duration
+            r_time_explore = np.log(t_after / t_before) * self.config["rewards"]["r_explore_time_amp"]
+            self.rewards[agent.id] += r_time_explore
+            
             self.prio_Q.add([agent.id, ActionTypes.SAMPLING, self.current_step + traveltime])
 
-
-        num_agents = len(self.agents)
-        votes_for_best_loc = sum( 1 for a in self.agent_objects if a.current_vote == self.experiment_best_location)
-        progress = votes_for_best_loc / num_agents
-
-        # only give progess bonus if it improves -> prevent agent from milking progress rewards with stale progess
-
-        if progress > self.last_progress:
-            for agent_id in self.agents:
-                agent = self.get_agent_by_id(agent_id)
-                if agent.current_vote == self.experiment_best_location:
-                    self.rewards[agent_id] += (progress - self.last_progress) * self.config["rewards"]["progress_bonus"]
-            self.last_progress = progress
 
         next_event = self.prio_Q.pop()
         # If the next event does not need a prediction, we can process it now
@@ -184,7 +171,7 @@ class SwarmDecisionEnvironment(AECEnv):
         
         if self.current_step >= float(self.config["experiment"]["max_steps"]):
             for agent_id in self.agents:
-                self.rewards[agent_id] += self.config["rewards"]["reward_for_wrong_decision"]
+                self.rewards[agent_id] += self.config["rewards"]["reward_for_timeout"]
             self.truncations = {agent: True for agent in self.agents}
             logging.info(f"Maximum steps reached, truncated: {self.current_step}")
             self._log_episode_summary("truncated")
@@ -211,32 +198,44 @@ class SwarmDecisionEnvironment(AECEnv):
         # one hot encoding for current location of agent
         loc_obs = np.zeros((num_locations + 1), dtype=np.float32)
         loc_obs[agent.next_location] = 1.0
-        quality_estimates = np.zeros(num_locations, dtype=np.float32)
-        for i in range(num_locations):
-            timesteps = agent.timesteps_at_location[i]
-            events = agent.events_at_location[i]
-            # priors, otherwise when 0 events -> looks like perfect location
-            alpha_0 = 1.0
-            beta_0 = 1.0
-            quality_estimates[i] = (events + alpha_0) / (timesteps + beta_0)
-            quality_estimates[i] = quality_estimates[i] * 1000.0
+
+        # priors, otherwise when 0 events -> looks like perfect location
+        alpha_0 = 1.0
+        beta_0 = 1000.0
+
+        events = agent.events_at_location
+        timesteps = agent.timesteps_at_location
+        
+        posterior_rate = (events + alpha_0) / (timesteps + beta_0)
+        relative_uncertainty = 1.0 / np.sqrt(events + alpha_0)
+        max_rate = (0 + alpha_0) / (1 + beta_0)
+        quality_score = 1.0 - (posterior_rate / max_rate)
+
+        # Two very important observation metrics: relative uncertainty and quality score
+        # The relative uncertainty shows how close the agent is to the true rate, only improves if events are spottet!
+        # Absolute uncertainty is useless here because it would be certain that the lambda is low (But we know that already! (prior))
+        # Quality score: how good the location is compared to the other locations
+
         self_vote = np.zeros(num_locations, dtype=np.float32)
         if (agent.current_vote is not None):
             self_vote[agent.current_vote] = 1.0
         nest_votes_ratio = np.zeros(num_locations, dtype=np.float32)
         # if the agent is currently in the nest, show opinions of other nesting agents
+        # Agents that have been sampling a location longer have stronger opinions
         if (agent.next_location == self.nest_loc_index):
-            total_nest_agents = len(self.nesting_agents)
-            if total_nest_agents > 0:
-                for nest_agent in self.nesting_agents:
-                    if nest_agent.current_vote is not None:
-                        nest_votes_ratio[nest_agent.current_vote] += 1
-                nest_votes_ratio = nest_votes_ratio / total_nest_agents
+            total_weight = 0.0
+            for nest_agent in self.nesting_agents:
+                if nest_agent.current_vote is not None:
+                    weight = nest_agent.timesteps_at_location[nest_agent.current_vote]
+                    nest_votes_ratio[nest_agent.current_vote] += weight
+                    total_weight += weight
+            if total_weight > 0:
+                nest_votes_ratio = nest_votes_ratio / total_weight
         
         # Normalized agent ID to break observation symmetry between agents
         num_agents = self.config["experiment"]["num_agents"]
         agent_id_norm = np.array([agent.id / max(num_agents - 1, 1)], dtype=np.float32)
-        observation = np.concatenate([loc_obs, quality_estimates, self_vote, nest_votes_ratio, agent_id_norm])
+        observation = np.concatenate([loc_obs, quality_score, relative_uncertainty, self_vote, nest_votes_ratio, agent_id_norm])
         return observation
 
     def createLocationsAndAgents(self):
@@ -328,12 +327,24 @@ class SwarmDecisionEnvironment(AECEnv):
                 self.prio_Q.add(nextEvent)
             case ActionTypes.NESTING_FINISHED:
                 agent = self.get_agent_by_id(current_agent_id)
+                events_after = agent.events_at_location.copy()
+                alpha_0 = 1.0
+                uncertainties_after = 1.0 / np.sqrt(events_after + alpha_0)
+                r_uncertainty_reduction = (agent.uncertainties_before - uncertainties_after) * self.config["rewards"]["r_uncert_amp"]
+                self.rewards[current_agent_id] += r_uncertainty_reduction
                 self.nesting_agents.remove(agent)
                 self.influence_agent(agent)
                 nextEvent = [current_agent_id, ActionTypes.PREDICT_ACTION, self.current_step + 1]
                 self.prio_Q.add(nextEvent)
             case ActionTypes.SAMPLING_FINISHED:
                 agent = self.get_agent_by_id(current_agent_id)
+
+                events_after = agent.events_at_location.copy()
+                alpha_0 = 1.0
+                uncertainties_after = 1.0 / np.sqrt(events_after + alpha_0)
+                r_uncertainty_reduction = (agent.uncertainties_before - uncertainties_after) * self.config["rewards"]["r_uncert_amp"]
+                self.rewards[current_agent_id] += r_uncertainty_reduction
+
                 self.sampling_agents[agent.next_location].remove(agent)
                 nextEvent = [current_agent_id, ActionTypes.PREDICT_ACTION, self.current_step + 1]
                 self.prio_Q.add(nextEvent)
@@ -341,7 +352,6 @@ class SwarmDecisionEnvironment(AECEnv):
                 location_id = event[QObjectIndices.AGENTID]
                 for agent in self.sampling_agents[location_id]:
                     agent.events_at_location[location_id] += 1
-                    self.rewards[agent.id] += self.config["rewards"]["reward_per_event"]
                 delay = max(1, round(np.random.exponential(scale=1.0 / self.lambdas[location_id])))
                 self.prio_Q.add([location_id, ActionTypes.LOCATION_EVENT, self.current_step + delay])
 
