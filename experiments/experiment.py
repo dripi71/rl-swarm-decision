@@ -84,21 +84,37 @@ class Experiment:
             reward = raw if raw is not None else "episode still running..."
 
             # Extract learner stats (entropy & entropy_coeff)
-            info = result.get("info", {})
-            learner_info = info.get("learner", {}).get("shared_policy", {})
-            if not learner_info:
-                learner_info = info.get("learner", {})
-            learner_stats = learner_info.get("learner_stats", {})
-            entropy = learner_stats.get("entropy")
-            if entropy is None:
-                entropy = learner_info.get("entropy", "N/A")
-            curr_entropy_coeff = learner_stats.get("entropy_coeff")
-            if curr_entropy_coeff is None:
-                curr_entropy_coeff = learner_info.get("entropy_coeff", "N/A")
+            # New API: result["learners"]["shared_policy"]["entropy"]
+            # Old API: result["info"]["learner"]["shared_policy"]["learner_stats"]["entropy"]
+            entropy = "N/A"
+            curr_entropy_coeff = "N/A"
+
+            # Try new API path first (Ray 2.x with build_algo)
+            learners = result.get("learners", {})
+            if "shared_policy" in learners:
+                entropy = learners["shared_policy"].get("entropy", "N/A")
+                curr_entropy_coeff = learners["shared_policy"].get("curr_entropy_coeff", "N/A")
+            
+            # Fallback: old API path
+            if entropy == "N/A":
+                info = result.get("info", {})
+                learner_info = info.get("learner", {}).get("shared_policy", info.get("learner", {}))
+                learner_stats = learner_info.get("learner_stats", learner_info)
+                entropy = learner_stats.get("entropy", "N/A")
+                curr_entropy_coeff = learner_stats.get("entropy_coeff", curr_entropy_coeff)
+
+            # Debug: print result keys on first iteration to find correct path
+            if i == 0:
+                print(f"[DEBUG] Top-level result keys: {list(result.keys())}")
+                if "learners" in result:
+                    print(f"[DEBUG] result['learners'] keys: {list(result['learners'].keys())}")
+                    for k, v in result["learners"].items():
+                        if isinstance(v, dict):
+                            print(f"[DEBUG] result['learners']['{k}'] keys: {list(v.keys())}")
 
             # Format to 4 decimal places if float
-            entropy_str = f"{entropy:.4f}" if isinstance(entropy, float) else str(entropy)
-            coeff_str = f"{curr_entropy_coeff:.4f}" if isinstance(curr_entropy_coeff, float) else str(curr_entropy_coeff)
+            entropy_str = f"{entropy:.4f}" if isinstance(entropy, (float, int)) and entropy != "N/A" else str(entropy)
+            coeff_str = f"{curr_entropy_coeff:.4f}" if isinstance(curr_entropy_coeff, (float, int)) and curr_entropy_coeff != "N/A" else str(curr_entropy_coeff)
 
             print(f"Iteration {i+1}/{training_iterations} | Mean Episode Reward: {reward} | Entropy: {entropy_str} | Entropy Coeff: {coeff_str}")
 

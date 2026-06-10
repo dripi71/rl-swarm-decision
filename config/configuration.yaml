@@ -1,5 +1,5 @@
 experiment:
-  num_agents: 50
+  num_agents: 10
   num_locations: 2
   lambda_min: 0.1
   lambda_max: 1
@@ -12,15 +12,15 @@ experiment:
   gamma_epsilon: 0.01
   # (!) timesteps, not agent steps
   max_steps: 5e5
-  min_sampling_duration: 1000
-  test_run_name: "run_Easy_major_reward_update_checkpoint-650"
-  training: false
+  min_sampling_duration: 2500
+  test_run_name: "run_Easy_no_decay_checkpoint-0"
+  training: true
   compare: false
-  load_checkpoint: true
+  load_checkpoint: false
   training_iterations: 800
-  eval_iterations: 20
+  eval_iterations: 5
   base_seed: 462
-  entropy_coeff: 0.001
+  entropy_coeff: 0.005
 
 compare_policies:
   policy_a_path: "run_Easy_major_reward_update_checkpoint-100"
@@ -28,15 +28,17 @@ compare_policies:
 
 
 rewards:
-  reward_per_event: 0.0
+  reward_per_event: 0.1
   reward_for_correct_decision: 30
   reward_for_wrong_decision: -50
-  decision_cost: -0.002
+  reward_for_timeout: -100
+  decision_cost: 0.0
   # 1e7, 1e7 * 5e-6 = 50
   # solving bonus: solved_reward - steps * solved_bonus_time_decay 
   # The solving bonus should be >=0 when reaching max steps, otherwise it penalizes correct solving
-  solved_bonus_time_decay: 5e-7
-  progress_bonus: 5
+  #solved_bonus_time_decay: 5e-7
+  solved_bonus_time_decay: 0
+  progress_bonus: 10
 
 testing:
   agents: [10,20,30,40,50,100,200,500, 1000, 2000, 5000, 10000]

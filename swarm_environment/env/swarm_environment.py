@@ -67,7 +67,7 @@ class SwarmDecisionEnvironment(AECEnv):
         # Episode-level diagnostic logging
         self.episode_count = 0
         self._init_episode_stats()
-        self._training_log_path = "logs/training_episodes.csv"
+        self._training_log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "logs", "training_episodes.csv")
         self._write_log_header()
 
     def reset(self, seed=None, options=None):
@@ -269,6 +269,7 @@ class SwarmDecisionEnvironment(AECEnv):
         
         # x1 controls the mean duration above min_sampling_duration
         min_duration = int(self.config["experiment"]["min_sampling_duration"])
+        max_duration = int(float(self.config["experiment"]["max_steps"]) / 10.0)
         # factor of 10000, otherwise changes are not very feelable for the agent
         mean_above_min = self._softplus(x1) * 1000.0
         mean = min_duration + mean_above_min
@@ -280,7 +281,7 @@ class SwarmDecisionEnvironment(AECEnv):
         scale = mean / alpha
         
         sample = np.random.gamma(shape=alpha, scale=scale)
-        return max(min_duration, round(float(sample)))
+        return min(max_duration, max(min_duration, round(float(sample))))
 
 
     def render(self):
@@ -434,7 +435,7 @@ class SwarmDecisionEnvironment(AECEnv):
             pass
 
     def _log_episode_summary(self, outcome):
-        if self.episode_count % 10 != 0 or self.config["experiment"]["training"] == False:
+        if self.config["experiment"]["training"] == False:
             return
 
         stats = self.episode_stats
