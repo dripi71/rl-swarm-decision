@@ -13,7 +13,7 @@ experiment:
   # (!) timesteps, not agent steps
   max_steps: 5e5
   min_sampling_duration: 2500
-  test_run_name: "run_Easy_no_decay_checkpoint-0"
+  test_run_name: "run_Easy_sampling_reward_checkpoint-0"
   training: true
   compare: false
   load_checkpoint: false
@@ -36,8 +36,7 @@ rewards:
   # 1e7, 1e7 * 5e-6 = 50
   # solving bonus: solved_reward - steps * solved_bonus_time_decay 
   # The solving bonus should be >=0 when reaching max steps, otherwise it penalizes correct solving
-  #solved_bonus_time_decay: 5e-7
-  solved_bonus_time_decay: 0
+  solved_bonus_time_decay: 5e-7
   progress_bonus: 10
 
 testing:
