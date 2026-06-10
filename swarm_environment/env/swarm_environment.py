@@ -219,6 +219,7 @@ class SwarmDecisionEnvironment(AECEnv):
             alpha_0 = 1.0
             beta_0 = 1.0
             quality_estimates[i] = (events + alpha_0) / (timesteps + beta_0)
+            quality_estimates[i] = quality_estimates[i] * 1000.0
         self_vote = np.zeros(num_locations, dtype=np.float32)
         if (agent.current_vote is not None):
             self_vote[agent.current_vote] = 1.0

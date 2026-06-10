@@ -13,7 +13,7 @@ experiment:
   # (!) timesteps, not agent steps
   max_steps: 5e5
   min_sampling_duration: 2500
-  test_run_name: "run_Easy_sampling_reward_checkpoint-0"
+  test_run_name: "run_Easy_sampling_reward_qual_scaled_checkpoint-0"
   training: true
   compare: false
   load_checkpoint: false
