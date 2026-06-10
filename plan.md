@@ -35,3 +35,5 @@ Runs evaluierbar machen:
 
 
 Reward time decay: eventuell nicht linearer abfall, nach geeigneter Funktion suchen
+
+Obseravtion: eventuell verändern. current timestep hinzufügen

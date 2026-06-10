@@ -1,5 +1,5 @@
 experiment:
-  num_agents: 10
+  num_agents: 1
   num_locations: 2
   lambda_min: 0.1
   lambda_max: 1
@@ -11,13 +11,13 @@ experiment:
   quorum_threshold: 0.7
   gamma_epsilon: 0.01
   # (!) timesteps, not agent steps
-  max_steps: 5e5
-  min_sampling_duration: 2500
-  test_run_name: "run_Easy_sampling_reward_qual_scaled_checkpoint-0"
+  max_steps: 1e5
+  min_sampling_duration: 100
+  test_run_name: "run_Easy_sanity_checkpoint-0"
   training: true
   compare: false
   load_checkpoint: false
-  training_iterations: 800
+  training_iterations: 400
   eval_iterations: 5
   base_seed: 462
   entropy_coeff: 0.005
