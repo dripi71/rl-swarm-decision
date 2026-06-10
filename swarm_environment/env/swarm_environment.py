@@ -142,6 +142,28 @@ class SwarmDecisionEnvironment(AECEnv):
             self.episode_stats["votes_no_vote"] += 1
         else:
             agent.current_vote = int(vote_action)
+
+            # if the agent makes a smart vote, e.g. voting for the location with the highest quality, reward it.
+            alpha_0 = self.config["experiment"]["prior_alpha_0"]
+            beta_0 = self.config["experiment"]["prior_beta_0"]
+
+            events = agent.events_at_location
+            timesteps = agent.timesteps_at_location
+            posterior_rate = (events + alpha_0) / (timesteps + beta_0)
+            max_rate = (0 + alpha_0) / (1 + beta_0)
+            quality_score = 1.0 - (posterior_rate / max_rate)
+            best_by_quality = np.max(quality_score)
+            is_best_choice = np.isclose(quality_score[vote_action], max_quality, atol=1e-5)
+            uncertainty_of_vote = 1.0 / np.sqrt(events[vote_action] + alpha_0)
+            if is_best_choice and uncertainty_vote < 0.99:
+                r_vote = 1.0
+            elif not is_best_choice:
+                r_vote = -1.0
+            else:
+                r_vote = 0.0
+            
+            self.rewards[agent.id] += r_vote * self.config["rewards"]["r_vote_amp"]
+
             self.episode_stats["votes_cast"] += 1
 
         traveltime = self.calculate_travel_time(current_location, agent.next_location)
@@ -155,7 +177,8 @@ class SwarmDecisionEnvironment(AECEnv):
             self.prio_Q.add([agent.id, ActionTypes.NESTING, self.current_step + traveltime])
         else:
             # reward sampling at location
-            t_before = agent.timesteps_at_location[agent.next_location]
+            beta_0 = 1000.0
+            t_before = agent.timesteps_at_location[agent.next_location] + beta_0
             t_after = t_before + agent.next_location_duration
             r_time_explore = np.log(t_after / t_before) * self.config["rewards"]["r_explore_time_amp"]
             self.rewards[agent.id] += r_time_explore
@@ -330,8 +353,8 @@ class SwarmDecisionEnvironment(AECEnv):
                 events_after = agent.events_at_location.copy()
                 alpha_0 = 1.0
                 uncertainties_after = 1.0 / np.sqrt(events_after + alpha_0)
-                r_uncertainty_reduction = (agent.uncertainties_before - uncertainties_after) * self.config["rewards"]["r_uncert_amp"]
-                self.rewards[current_agent_id] += r_uncertainty_reduction
+                r_uncertainty_reduction = np.sum(agent.uncertainties_before - uncertainties_after) * self.config["rewards"]["r_uncert_amp"]
+                self.rewards[current_agent_id] += float(r_uncertainty_reduction)
                 self.nesting_agents.remove(agent)
                 self.influence_agent(agent)
                 nextEvent = [current_agent_id, ActionTypes.PREDICT_ACTION, self.current_step + 1]
@@ -342,8 +365,8 @@ class SwarmDecisionEnvironment(AECEnv):
                 events_after = agent.events_at_location.copy()
                 alpha_0 = 1.0
                 uncertainties_after = 1.0 / np.sqrt(events_after + alpha_0)
-                r_uncertainty_reduction = (agent.uncertainties_before - uncertainties_after) * self.config["rewards"]["r_uncert_amp"]
-                self.rewards[current_agent_id] += r_uncertainty_reduction
+                r_uncertainty_reduction = np.sum(agent.uncertainties_before - uncertainties_after) * self.config["rewards"]["r_uncert_amp"]
+                self.rewards[current_agent_id] += float(r_uncertainty_reduction)
 
                 self.sampling_agents[agent.next_location].remove(agent)
                 nextEvent = [current_agent_id, ActionTypes.PREDICT_ACTION, self.current_step + 1]
