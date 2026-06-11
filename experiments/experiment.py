@@ -118,7 +118,7 @@ class Experiment:
 
             print(f"Iteration {i+1}/{training_iterations} | Mean Episode Reward: {reward} | Entropy: {entropy_str} | Entropy Coeff: {coeff_str}")
 
-            if (i + 1) % 50 == 0:
+            if (i + 1) % 100 == 0:
                 checkpoint_train_iteration = initial_train_checkpoint + i + 1
                 filename = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_train_iteration)
                 algo.save(filename)
