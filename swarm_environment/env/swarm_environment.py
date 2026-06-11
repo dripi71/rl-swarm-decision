@@ -26,7 +26,6 @@ class SwarmDecisionEnvironment(AECEnv):
         self.locations = []
         self.prio_Q = Priority_Q()
         self.current_step = 0
-        self.last_progress = 0.0
         self.swarm_decision = None
         self.experiment_best_location = np.argmin(self.lambdas)
         # The nest location index is the last index (num_locations because 0 is location 1)
@@ -53,8 +52,8 @@ class SwarmDecisionEnvironment(AECEnv):
             }) for agent in self.agents
         }
         
-        # observation space: loc_obs (N+1) + quality_score (N) + relative_uncertainty (N) + self_vote (N) + nest_votes_ratio (N) + Agent ID (break obs symmetrie) = 5*N + 2
-        obs_dim = 5 * self.config["experiment"]["num_locations"] + 1 + 1
+        # observation space: loc_obs (N+1) + quality_score (N) + relative_uncertainty (N) + self_vote (N) + nest_votes_ratio (N) + world_step_time + steps_at_current_location + Agent ID (break obs symmetrie) = 5*N + 2
+        obs_dim = 5 * self.config["experiment"]["num_locations"] + 1 + 1 + 1 + 1
         self.observation_spaces = {
             agent: gym.spaces.Box(low=0.0, high=np.inf, shape=(obs_dim,), dtype=np.float32) 
             for agent in self.agents
@@ -79,7 +78,6 @@ class SwarmDecisionEnvironment(AECEnv):
         self.agents = []
         self.agent_objects = []
         self.locations = []
-        self.last_progress = 0.0
         self.swarm_decision = None
         self.sampling_agents = [[] for _ in range(self.config["experiment"]["num_locations"])]
         self.lambdas = self.generateLambdas()
@@ -165,6 +163,11 @@ class SwarmDecisionEnvironment(AECEnv):
             self.rewards[agent.id] += r_vote * self.config["rewards"]["r_vote_amp"]
 
             self.episode_stats["votes_cast"] += 1
+
+        if(current_location == agent.next_location):
+            agent.steps_at_current_location = agent.steps_at_current_location + agent.next_location_duration
+        else:
+            agent.steps_at_current_location = agent.next_location_duration
 
         traveltime = self.calculate_travel_time(current_location, agent.next_location)
 
@@ -254,11 +257,19 @@ class SwarmDecisionEnvironment(AECEnv):
                     total_weight += weight
             if total_weight > 0:
                 nest_votes_ratio = nest_votes_ratio / total_weight
+        # add step time to give agent a feeling how much time it has left
+        obs_step_time = np.array([self.current_step / float(self.config["experiment"]["max_steps"])], dtype=np.float32)
+
+        # steps at the current location:
+        # Max steps is very high and steps at a location will be mostly low.
+        # To prevent that the normed observation is always close to 0, we scale the max_steps by 0.1
+        obs_step_at_current_location = np.array([agent.steps_at_current_location / (float(self.config["experiment"]["max_steps"]) * 0.1)], dtype=np.float32)
         
+
         # Normalized agent ID to break observation symmetry between agents
         num_agents = self.config["experiment"]["num_agents"]
         agent_id_norm = np.array([agent.id / max(num_agents - 1, 1)], dtype=np.float32)
-        observation = np.concatenate([loc_obs, quality_score, relative_uncertainty, self_vote, nest_votes_ratio, agent_id_norm])
+        observation = np.concatenate([loc_obs, quality_score, relative_uncertainty, self_vote, nest_votes_ratio, obs_step_time, obs_step_at_current_location, agent_id_norm])
         return observation
 
     def createLocationsAndAgents(self):
@@ -451,7 +462,6 @@ class SwarmDecisionEnvironment(AECEnv):
         self.episode_stats = {
             "total_decisions": 0,
             "votes_cast": 0,
-            "votes_blocked": 0,
             "votes_no_vote": 0,
             "location_choices": [0] * (num_locs + 1),
             "sampling_durations": [],
@@ -461,8 +471,8 @@ class SwarmDecisionEnvironment(AECEnv):
         os.makedirs(os.path.dirname(self._training_log_path), exist_ok=True)
         try:
             with open(self._training_log_path, 'x') as f:
-                f.write("episode,outcome,decision_loc,best_loc,steps,max_progress,"
-                        "total_decisions,votes_cast,votes_blocked,votes_no_vote,"
+                f.write("episode,outcome,decision_loc,best_loc,steps,"
+                        "total_decisions,votes_cast,votes_no_vote,"
                         "loc_choices,avg_duration,min_duration,max_duration,"
                         "total_events,final_votes,lambdas\n")
         except FileExistsError:
@@ -492,9 +502,8 @@ class SwarmDecisionEnvironment(AECEnv):
         decision_loc = self.swarm_decision if self.swarm_decision is not None else "none"
 
         row = (f"{self.episode_count},{outcome},{decision_loc},{self.experiment_best_location},"
-               f"{self.current_step},{self.last_progress:.4f},"
-               f"{stats['total_decisions']},{stats['votes_cast']},"
-               f"{stats['votes_blocked']},{stats['votes_no_vote']},"
+               f"{self.current_step},"
+               f"{stats['total_decisions']},{stats['votes_cast']},{stats['votes_no_vote']},"
                f"\"{stats['location_choices']}\",{avg_dur:.0f},{min_dur},{max_dur},"
                f"{total_events:.1f},\"{final_votes}(no_vote={no_vote_count})\","
                f"\"{list(self.lambdas)}\"\n")

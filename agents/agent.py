@@ -11,6 +11,8 @@ class Agent:
         self.num_locations = config["experiment"]["num_locations"]
         self.timesteps_at_location = [0 for _ in range(self.num_locations)]
         self.events_at_location = [0 for _ in range(self.num_locations)]
+        self.steps_at_current_location = 0
+        self.uncertainties_before = np.ones(self.num_locations, dtype=np.float32)
 
         # For Bayesian Baseline
         #self.obs_time = 1000   # initial 10³ timesteps
