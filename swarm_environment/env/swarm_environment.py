@@ -153,9 +153,9 @@ class SwarmDecisionEnvironment(AECEnv):
             max_rate = (0 + alpha_0) / (1 + beta_0)
             quality_score = 1.0 - (posterior_rate / max_rate)
             best_by_quality = np.max(quality_score)
-            is_best_choice = np.isclose(quality_score[vote_action], max_quality, atol=1e-5)
+            is_best_choice = np.isclose(quality_score[vote_action], best_by_quality, atol=1e-5)
             uncertainty_of_vote = 1.0 / np.sqrt(events[vote_action] + alpha_0)
-            if is_best_choice and uncertainty_vote < 0.99:
+            if is_best_choice and uncertainty_of_vote < 0.99:
                 r_vote = 1.0
             elif not is_best_choice:
                 r_vote = -1.0
@@ -170,7 +170,7 @@ class SwarmDecisionEnvironment(AECEnv):
 
         # save uncertainty before event
         alpha_0 = 1.0
-        events_before = agent.events_at_location.copy()
+        events_before = np.array(agent.events_at_location, dtype=np.float32)
         agent.uncertainties_before = 1.0 / np.sqrt(events_before + alpha_0)
 
         if(agent.next_location == self.nest_loc_index):
@@ -350,7 +350,7 @@ class SwarmDecisionEnvironment(AECEnv):
                 self.prio_Q.add(nextEvent)
             case ActionTypes.NESTING_FINISHED:
                 agent = self.get_agent_by_id(current_agent_id)
-                events_after = agent.events_at_location.copy()
+                events_after = np.array(agent.events_at_location, dtype=np.float32)
                 alpha_0 = 1.0
                 uncertainties_after = 1.0 / np.sqrt(events_after + alpha_0)
                 r_uncertainty_reduction = np.sum(agent.uncertainties_before - uncertainties_after) * self.config["rewards"]["r_uncert_amp"]
@@ -362,7 +362,7 @@ class SwarmDecisionEnvironment(AECEnv):
             case ActionTypes.SAMPLING_FINISHED:
                 agent = self.get_agent_by_id(current_agent_id)
 
-                events_after = agent.events_at_location.copy()
+                events_after = np.array(agent.events_at_location, dtype=np.float32)
                 alpha_0 = 1.0
                 uncertainties_after = 1.0 / np.sqrt(events_after + alpha_0)
                 r_uncertainty_reduction = np.sum(agent.uncertainties_before - uncertainties_after) * self.config["rewards"]["r_uncert_amp"]

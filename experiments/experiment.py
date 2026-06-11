@@ -188,9 +188,9 @@ class Experiment:
             dur_means   = logits[:, num_loc_actions : num_loc_actions + 2]
             vote_logits = logits[:, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions]
 
-            loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
+            loc_actions = torch.distributions.Categorical(logits=loc_logits).sample().cpu().numpy()
             dur_params  = dur_means.cpu().numpy()
-            vote_actions = torch.argmax(vote_logits, dim=1).cpu().numpy()
+            vote_actions = torch.distributions.Categorical(logits=vote_logits).sample().cpu().numpy()
 
             return {
                 aid: {
@@ -331,12 +331,12 @@ class Experiment:
                 dur_means   = logits[:, num_loc_actions : num_loc_actions + 2]  # (batch, 2)
                 vote_logits = logits[:, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions]
 
-                # Deterministic location: argmax over Categorical logits
-                loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
+                # Stochastic location: sample from Categorical logits (prevents getting stuck)
+                loc_actions = torch.distributions.Categorical(logits=loc_logits).sample().cpu().numpy()
                 # Deterministic duration: pass the raw means; environment applies softplus + Gamma
                 dur_params  = dur_means.cpu().numpy()  # shape (batch, 2)
-                # Deterministic vote: argmax over Categorical logits
-                vote_actions = torch.argmax(vote_logits, dim=1).cpu().numpy()
+                # Stochastic vote: sample from Categorical logits
+                vote_actions = torch.distributions.Categorical(logits=vote_logits).sample().cpu().numpy()
 
                 actions = {
                     agent_id: {

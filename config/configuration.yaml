@@ -13,12 +13,12 @@ experiment:
   # (!) timesteps, not agent steps
   max_steps: 1e5
   min_sampling_duration: 100
-  test_run_name: "run_Easy_sanity_checkpoint-0"
-  training: true
+  test_run_name: "run_Easy_new_rew_sys_checkpoint-600"
+  training: false
   compare: false
-  load_checkpoint: false
-  training_iterations: 400
-  eval_iterations: 5
+  load_checkpoint: true
+  training_iterations: 600
+  eval_iterations: 500
   base_seed: 462
   entropy_coeff: 0.005
   prior_beta_0: 10000.0

@@ -36,4 +36,8 @@ Runs evaluierbar machen:
 
 Reward time decay: eventuell nicht linearer abfall, nach geeigneter Funktion suchen
 
-Obseravtion: eventuell verändern. current timestep hinzufügen
+Parameter tuning pushing 80% acc:
+- Wrong decision erhöhen auf -25 oder -30
+- entropy coeff mit der zeit reduzieren
+- learning time reduzieren
+- 
