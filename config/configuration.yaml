@@ -1,5 +1,5 @@
 experiment:
-  num_agents: 50
+  num_agents: 10
   num_locations: 2
   lambda_min: 0.1
   lambda_max: 1
@@ -13,7 +13,7 @@ experiment:
   # (!) timesteps, not agent steps
   max_steps: 1e5
   min_sampling_duration: 100
-  test_run_name: "run_Easy_mso_50_agents_checkpoint-0"
+  test_run_name: "run_Easy_mso_exp05_unc20_vot2_checkpoint-0"
   training: true
   compare: false
   load_checkpoint: false
@@ -34,8 +34,8 @@ rewards:
   reward_for_wrong_decision: -15
   reward_for_timeout: -30
   r_uncert_amp: 20
-  r_explore_time_amp: 0.1
-  r_vote_amp: 1.0
+  r_explore_time_amp: 0.5
+  r_vote_amp: 2.0
   # 1e7, 1e7 * 5e-6 = 50
   # solving bonus: solved_reward - steps * solved_bonus_time_decay 
   # The solving bonus should be >=0 when reaching max steps, otherwise it penalizes correct solving
