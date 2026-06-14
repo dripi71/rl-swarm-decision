@@ -1,5 +1,5 @@
 experiment:
-  num_agents: 50
+  num_agents: 25
   num_locations: 2
   lambda_min: 0.1
   lambda_max: 1
@@ -11,32 +11,40 @@ experiment:
   quorum_threshold: 0.7
   gamma_epsilon: 0.01
   # (!) timesteps, not agent steps
-  max_steps: 1e6
-  min_sampling_duration: 2000
-  test_run_name: "run_Easy_democrat_checkpoint-100"
+  max_steps: 5e6
+  min_sampling_duration: 100
+  test_run_name: "run_Easy_mso_exp05_unc20_vot2_25agent_checkpoint-0"
   training: false
-  compare: true
-  load_checkpoint: true
-  training_iterations: 800
-  eval_iterations: 20
+  compare: false
+  run_baseline: true         # true → DMMD baseline (no RL policy needed)
+  load_checkpoint: false
+  training_iterations: 600
+  eval_iterations: 500
   base_seed: 462
-  entropy_coeff: 0.001
+  entropy_coeff: 0.005
+  prior_beta_0: 10000.0
+  prior_alpha_0: 1.0
+  DMMD:
+    prior_beta_0: 4000
+    prior_alpha_0: 1.0
+
 
 compare_policies:
-  policy_a_path: "run_Easy_democrat_checkpoint-100"
-  policy_b_path: "run_Easy_democrat_checkpoint-50"
+  policy_a_path: "run_Easy_major_reward_update_checkpoint-100"
+  policy_b_path: "run_Easy_major_reward_update_checkpoint-650"
 
 
 rewards:
-  reward_per_event: 0.0
-  reward_for_correct_decision: 10
-  reward_for_wrong_decision: -50
-  decision_cost: -0.005
+  reward_for_correct_decision: 20
+  reward_for_wrong_decision: -15
+  reward_for_timeout: -30
+  r_uncert_amp: 20
+  r_explore_time_amp: 0.5
+  r_vote_amp: 2.0
   # 1e7, 1e7 * 5e-6 = 50
   # solving bonus: solved_reward - steps * solved_bonus_time_decay 
   # The solving bonus should be >=0 when reaching max steps, otherwise it penalizes correct solving
-  solved_bonus_time_decay: 5e-7
-  progress_bonus: 1
+  solved_bonus_time_decay: 5e-6
 
 testing:
   agents: [10,20,30,40,50,100,200,500, 1000, 2000, 5000, 10000]

@@ -1,0 +1,38 @@
+2026-06-10 17:37:46,589	WARNING algorithm_config.py:5108 -- You are running PPO on the new API stack! This is the new default behavior for this algorithm. If you don't want to use the new API stack, set `config.api_stack(enable_rl_module_and_learner=False,enable_env_runner_and_connector_v2=False)`. For a detailed migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html
+Traceback (most recent call last):
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/rl-swarm-decision/scratch_test_logits.py", line 24, in <module>
+    algo = config.build_algo()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/rllib/algorithms/algorithm_config.py", line 995, in build_algo
+    return algo_class(
+           ^^^^^^^^^^^
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/rllib/algorithms/algorithm.py", line 537, in __init__
+    super().__init__(
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/tune/trainable/trainable.py", line 151, in __init__
+    self.setup(copy.deepcopy(self.config))
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/rllib/algorithms/algorithm.py", line 802, in setup
+    self.env_runner_group = EnvRunnerGroup(
+                            ^^^^^^^^^^^^^^^
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/rllib/env/env_runner_group.py", line 132, in __init__
+    self._remote_config_obj_ref = ray.put(self._remote_config)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/_private/auto_init_hook.py", line 21, in auto_init_wrapper
+    auto_init_ray()
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/_private/auto_init_hook.py", line 15, in auto_init_ray
+    ray.init()
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/_private/client_mode_hook.py", line 107, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/_private/worker.py", line 1905, in init
+    _global_node = ray._private.node.Node(
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/_private/node.py", line 399, in __init__
+    self.start_head_processes()
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/_private/node.py", line 1354, in start_head_processes
+    self.start_api_server(
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/_private/node.py", line 1069, in start_api_server
+    self._webui_url, process_info = ray._private.services.start_api_server(
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/pfs/data6/home/kn/kn_kn/kn_pop544397/venv/lib64/python3.12/site-packages/ray/_private/services.py", line 1396, in start_api_server
+    time.sleep(0.1)
+KeyboardInterrupt
