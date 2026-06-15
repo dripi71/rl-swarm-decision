@@ -13,4 +13,4 @@ module load devel/python/3.12.3-gnu-14.2
 
 source ../venv/bin/activate
 
-python -u runtime_test.py
+python -u main.py

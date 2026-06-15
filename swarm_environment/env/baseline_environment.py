@@ -8,16 +8,15 @@ from agents.bayesian_agent import BaselineAgent
 
 
 class BaselineSimulation:
-
     def __init__(self, config: dict):
         self.config = config
         self.num_locations = config["experiment"]["num_locations"]
-        self.nest_loc_index = self.num_locations     # convention: nest = last index
+        self.nest_loc_index = self.num_locations  # convention: nest = last index
         self.max_steps = float(config["experiment"]["max_steps"])
         self.travel_time = config["experiment"]["travel_time"]
         self.quorum_threshold = config["experiment"]["quorum_threshold"]
-        self.prior_a0 = config["experiment"]["DMMD"]["prior_alpha_0"]
-        self.prior_b0 = config["experiment"]["DMMD"]["prior_beta_0"]
+        self.prior_a0 = config["experiment"]["prior_alpha_0"]
+        self.prior_b0 = config["experiment"]["prior_beta_0"]
 
         # Populated in reset()
         self.lambdas: np.ndarray = np.array([])
@@ -49,7 +48,7 @@ class BaselineSimulation:
             self.agent_objects.append(agent)
             self.nesting_agents.append(agent)
             # Initial random wait in Nest (see implementation of https://github.com/StudentWorkCPS/gamma_bots/blob/master/agent/my_agent.py)
-            random_first_nest_wait = random.randint(0, 500) 
+            random_first_nest_wait = random.randint(0, 500)
             self.prio_Q.add([i, ActionTypes.NESTING_FINISHED, random_first_nest_wait])
 
         for loc in range(self.num_locations):
@@ -65,7 +64,9 @@ class BaselineSimulation:
         )
         blue_lambda = self.config["experiment"]["blue_env_lambda"]
         blue_left = np.random.randint(0, 2)
-        return np.array([blue_lambda, red_lambda] if blue_left else [red_lambda, blue_lambda])
+        return np.array(
+            [blue_lambda, red_lambda] if blue_left else [red_lambda, blue_lambda]
+        )
 
     def run_episode(self) -> dict:
         # Run a complete episode
@@ -82,7 +83,9 @@ class BaselineSimulation:
             decision = self._check_consensus()
             if decision is not None:
                 self.swarm_decision = decision
-                outcome = "correct" if decision == self.experiment_best_location else "wrong"
+                outcome = (
+                    "correct" if decision == self.experiment_best_location else "wrong"
+                )
                 return self._metrics(outcome=outcome)
 
     def _dispatch(self, event: list) -> None:
@@ -98,7 +101,6 @@ class BaselineSimulation:
                 self._on_nesting(event)
             case ActionTypes.NESTING_FINISHED:
                 self._on_nesting_finished(event)
-
 
     def _on_location_event(self, event: list) -> None:
         loc = event[QObjectIndices.AGENTID]
@@ -119,8 +121,13 @@ class BaselineSimulation:
 
         agent.timesteps_at_location[loc] += agent.next_location_duration
 
-        self.prio_Q.add([agent_id, ActionTypes.SAMPLING_FINISHED,
-                          self.current_step + agent.next_location_duration])
+        self.prio_Q.add(
+            [
+                agent_id,
+                ActionTypes.SAMPLING_FINISHED,
+                self.current_step + agent.next_location_duration,
+            ]
+        )
 
     def _on_sampling_finished(self, event: list) -> None:
         agent_id = event[QObjectIndices.AGENTID]
@@ -144,13 +151,14 @@ class BaselineSimulation:
         self.nesting_agents.append(agent)
         # Dmmd with belief sharing:
         # agent.communicate_in_nest(self.nesting_agents)
-         
+
         # Compute dissemination time
         nest_duration = agent.compute_nest_time()
         agent.next_location_duration = nest_duration
 
-        self.prio_Q.add([agent_id, ActionTypes.NESTING_FINISHED,
-                          self.current_step + nest_duration])
+        self.prio_Q.add(
+            [agent_id, ActionTypes.NESTING_FINISHED, self.current_step + nest_duration]
+        )
 
     def _on_nesting_finished(self, event: list) -> None:
         agent_id = event[QObjectIndices.AGENTID]
@@ -161,10 +169,9 @@ class BaselineSimulation:
             if nesting_agent.current_vote is not None:
                 opinions[nesting_agent.current_vote] += 1
 
-
         if agent in self.nesting_agents:
             self.nesting_agents.remove(agent)
-        
+
         # Choose next measurement location
         loc = agent.choose_location(opinions)
         agent.current_vote = loc
@@ -198,13 +205,16 @@ class BaselineSimulation:
         final_votes: dict[int, int] = {}
         for agent in self.agent_objects:
             if agent.current_vote is not None:
-                final_votes[agent.current_vote] = final_votes.get(agent.current_vote, 0) + 1
+                final_votes[agent.current_vote] = (
+                    final_votes.get(agent.current_vote, 0) + 1
+                )
 
         return {
             "outcome": outcome,
             "steps": self.current_step,
             "correct": self.swarm_decision == self.experiment_best_location
-                       if self.swarm_decision is not None else False,
+            if self.swarm_decision is not None
+            else False,
             "truncated": outcome == "truncated",
             "total_events": total_events,
             "events_per_agent": total_events / len(self.agent_objects),

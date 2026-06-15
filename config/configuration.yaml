@@ -1,8 +1,6 @@
 experiment:
-  num_agents: 10
+  num_agents: 50
   num_locations: 2
-  lambda_min: 0.1
-  lambda_max: 1
   blue_env_lambda: 0.00005
   red_env_lambda_easy: 0.0001
   red_env_lambda_hard: 6.666666666666667e-5
@@ -11,27 +9,24 @@ experiment:
   quorum_threshold: 0.7
   gamma_epsilon: 0.01
   # (!) timesteps, not agent steps
-  #max_steps: 8e6
-  max_steps: 10000
+  max_steps: 8e6
   min_sampling_duration: 100
-  test_run_name: "run_Easy_mso_more_steps_higher_entropy_coeff_checkpoint-0"
+  test_run_name: "run_Easy_mso_s_50_checkpoint-0"
   load_checkpoint: false
   # Modes: test     -  compares given policy against baseline
   #        train    -  trains a new or existing policy
   #        compare  -  compares two policies against eachother
   #        baseline -  runs a given baseline
   mode: "train"
-  training_iterations: 600
+  training_iterations: 800
   eval_iterations: 500
   base_seed: 462
   entropy_coeff: 0.02
   clip_param: 0.2
   vf_clip_param: 10.0
+  #old prior beta: 10000.0
   prior_beta_0: 4000.0
   prior_alpha_0: 1.0
-  DMMD:
-    prior_beta_0: 4000
-    prior_alpha_0: 1.0
 
 compare_policies:
   policy_a_path: "run_Easy_major_reward_update_checkpoint-100"
@@ -39,10 +34,10 @@ compare_policies:
 
 rewards:
   reward_for_correct_decision: 20
-  reward_for_wrong_decision: -15
-  reward_for_timeout: -30
+  reward_for_wrong_decision: -35
+  reward_for_timeout: -40
   r_uncert_amp: 20
-  r_explore_time_amp: 0.1
+  r_explore_time_amp: 0.6
   r_vote_amp: 1.0
   # 1e7, 1e7 * 5e-6 = 50
   # solving bonus: solved_reward - steps * solved_bonus_time_decay

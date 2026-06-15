@@ -12,14 +12,24 @@ import logging
 import math
 import random
 
+
 class Experiment:
     def __init__(self):
         with open("config/configuration.yaml", "r") as f:
             self.config = yaml.safe_load(f)
-        logging.basicConfig(filename="logs/last_run.txt", filemode="w", level=logging.INFO, format='%(message)s')
+        logging.basicConfig(
+            filename="logs/last_run.txt",
+            filemode="w",
+            level=logging.INFO,
+            format="%(message)s",
+        )
         test_run_name = self.config["experiment"]["test_run_name"]
-        self.action_logger = self.setup_logger(name="action_logger", log_file=f"logs/actions/{test_run_name}.csv", mode="w")
-        self.metric_logger = self.setup_logger(name="metric_logger", log_file=f"logs/metrics/{test_run_name}.csv", mode="w")
+        self.action_logger = self.setup_logger(
+            name="action_logger", log_file=f"logs/actions/{test_run_name}.csv", mode="w"
+        )
+        self.metric_logger = self.setup_logger(
+            name="metric_logger", log_file=f"logs/metrics/{test_run_name}.csv", mode="w"
+        )
 
     def create_env(self, env_config):
         with open("config/configuration.yaml", "r") as f:
@@ -30,7 +40,7 @@ class Experiment:
     def run(self):
 
         mode = self.config["experiment"]["mode"]
-        
+
         if mode == "test":
             self.test_policy_against_baseline()
         elif mode == "compare":
@@ -40,20 +50,22 @@ class Experiment:
         elif mode == "train":
             self.train()
         else:
-            print("No valid mode selecte, choose between 'test', 'compare', 'baseline' or 'train'")
+            print(
+                "No valid mode selecte, choose between 'test', 'compare', 'baseline' or 'train'"
+            )
 
     def test_policy_against_baseline(self):
-        print("="*60)
+        print("=" * 60)
         print("Starting RL vs DMMD Baseline Comparison Suite")
         print(f"Policy: {self.config['experiment']['test_run_name']}")
         print(f"Episodes: {self.config['experiment']['eval_iterations']}")
-        print("="*60)
+        print("=" * 60)
 
         # 1. Determine run directory: eval/runxx
         eval_dir = "eval"
         if not os.path.exists(eval_dir):
             os.makedirs(eval_dir, exist_ok=True)
-        
+
         existing_runs = []
         for d in os.listdir(eval_dir):
             if d.startswith("run") and d[3:].isdigit():
@@ -63,11 +75,10 @@ class Experiment:
         os.makedirs(run_dir, exist_ok=True)
 
         config_out_path = os.path.join(run_dir, "configuration_stamp.yaml")
-        with open (config_out_path, "w") as f_cfg:
+        with open(config_out_path, "w") as f_cfg:
             yaml.safe_dump(self.config, f_cfg, default_flow_style=False)
 
         print(f"Saving comparison results and config timestamp to directory: {run_dir}")
-
 
         rl_csv_path = os.path.join(run_dir, "rl-algo.csv")
         dmmd_csv_path = os.path.join(run_dir, "dmmd-algo.csv")
@@ -91,7 +102,9 @@ class Experiment:
             )
         )
         algo = config.build_algo()
-        checkpoint_path = os.path.abspath(f"policies/{self.config['experiment']['test_run_name']}")
+        checkpoint_path = os.path.abspath(
+            f"policies/{self.config['experiment']['test_run_name']}"
+        )
         algo.restore(checkpoint_path)
         print(f"Checkpoint loaded from: {checkpoint_path}")
 
@@ -99,7 +112,9 @@ class Experiment:
 
         rl_results = []
         with open(rl_csv_path, "w") as f:
-            f.write("seed,correct,false,truncated,steps_until_decision,events_per_agent,events_total,lambdas,votes\n")
+            f.write(
+                "seed,correct,false,truncated,steps_until_decision,events_per_agent,events_total,lambdas,votes\n"
+            )
             for i in range(eval_iterations):
                 episode_seed = base_seed + i
                 self.set_global_seeds(episode_seed)
@@ -112,40 +127,57 @@ class Experiment:
 
                 while not terminateds["__all__"] and not truncateds["__all__"]:
                     agent_ids = list(obs.keys())
-                    obs_tensor = torch.from_numpy(np.array(list(obs.values()), dtype=np.float32))
+                    obs_tensor = torch.from_numpy(
+                        np.array(list(obs.values()), dtype=np.float32)
+                    )
                     with torch.no_grad():
                         output = module.forward_inference({SampleBatch.OBS: obs_tensor})
                     logits = output["action_dist_inputs"]
                     num_loc_actions = self.config["experiment"]["num_locations"] + 1
 
-                    loc_logits  = logits[:, :num_loc_actions]
-                    dur_means   = logits[:, num_loc_actions : num_loc_actions + 2]
-                    vote_logits = logits[:, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions]
+                    loc_logits = logits[:, :num_loc_actions]
+                    dur_means = logits[:, num_loc_actions : num_loc_actions + 2]
+                    vote_logits = logits[
+                        :, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions
+                    ]
 
                     loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
-                    dur_params  = dur_means.cpu().numpy()
+                    dur_params = dur_means.cpu().numpy()
                     vote_actions = torch.argmax(vote_logits, dim=1).cpu().numpy()
 
                     actions = {
                         agent_id: {
-                            "location":        np.int64(loc),
-                            "duration_params":  np.array([dp[0], dp[1]], dtype=np.float32),
-                            "vote":            np.int64(vote),
+                            "location": np.int64(loc),
+                            "duration_params": np.array(
+                                [dp[0], dp[1]], dtype=np.float32
+                            ),
+                            "vote": np.int64(vote),
                         }
-                        for agent_id, loc, dp, vote in zip(agent_ids, loc_actions, dur_params, vote_actions)
+                        for agent_id, loc, dp, vote in zip(
+                            agent_ids, loc_actions, dur_params, vote_actions
+                        )
                     }
                     obs, rewards, terminateds, truncateds, infos = env.step(actions)
                     total_reward += sum(rewards.values())
 
                 base_env = env.env.unwrapped
                 steps_to_decision = base_env.current_step
-                correct_decision = base_env.swarm_decision == base_env.experiment_best_location if base_env.swarm_decision is not None else False
+                correct_decision = (
+                    base_env.swarm_decision == base_env.experiment_best_location
+                    if base_env.swarm_decision is not None
+                    else False
+                )
                 truncated = truncateds["__all__"]
                 false_decision = not correct_decision and not truncated
-                total_events_until_decision = sum([sum(agent.events_at_location) for agent in base_env.agent_objects])
-                events_experienced_per_agent = total_events_until_decision / self.config["experiment"]["num_agents"]
+                total_events_until_decision = sum(
+                    [sum(agent.events_at_location) for agent in base_env.agent_objects]
+                )
+                events_experienced_per_agent = (
+                    total_events_until_decision
+                    / self.config["experiment"]["num_agents"]
+                )
                 lambdas = [float(x) for x in base_env.lambdas]
-                
+
                 votes = [0] * self.config["experiment"]["num_locations"]
                 for agent in base_env.agent_objects:
                     if agent.current_vote is not None:
@@ -153,17 +185,21 @@ class Experiment:
                             votes[agent.current_vote] += 1
                 votes = [int(v) for v in votes]
 
-                f.write(f"{episode_seed},{correct_decision},{false_decision},{truncated},{steps_to_decision},{events_experienced_per_agent:.3f},{total_events_until_decision},\"{lambdas}\",\"{votes}\"\n")
+                f.write(
+                    f'{episode_seed},{correct_decision},{false_decision},{truncated},{steps_to_decision},{events_experienced_per_agent:.3f},{total_events_until_decision},"{lambdas}","{votes}"\n'
+                )
 
-                rl_results.append({
-                    "correct": correct_decision,
-                    "truncated": truncated,
-                    "steps": steps_to_decision,
-                    "total_events": total_events_until_decision,
-                })
+                rl_results.append(
+                    {
+                        "correct": correct_decision,
+                        "truncated": truncated,
+                        "steps": steps_to_decision,
+                        "total_events": total_events_until_decision,
+                    }
+                )
 
                 if (i + 1) % 10 == 0 or (i + 1) == eval_iterations:
-                    print(f"RL Episode {i+1}/{eval_iterations} complete.")
+                    print(f"RL Episode {i + 1}/{eval_iterations} complete.")
 
         algo.stop()
         print("RL Policy Evaluation Complete.")
@@ -174,7 +210,9 @@ class Experiment:
 
         dmmd_results = []
         with open(dmmd_csv_path, "w") as f:
-            f.write("seed,correct,false,truncated,steps_until_decision,events_per_agent,events_total,lambdas,votes\n")
+            f.write(
+                "seed,correct,false,truncated,steps_until_decision,events_per_agent,events_total,lambdas,votes\n"
+            )
             for i in range(eval_iterations):
                 episode_seed = base_seed + i
                 self.set_global_seeds(episode_seed)
@@ -189,29 +227,38 @@ class Experiment:
                 total_events = metrics["total_events"]
                 events_per_agent = metrics["events_per_agent"]
                 lambdas = [float(x) for x in metrics["lambdas"]]
-                votes = [int(metrics["final_votes"].get(l, 0)) for l in range(self.config["experiment"]["num_locations"])]
+                votes = [
+                    int(metrics["final_votes"].get(l, 0))
+                    for l in range(self.config["experiment"]["num_locations"])
+                ]
 
-                f.write(f"{episode_seed},{correct},{false_dec},{truncated},{steps},{events_per_agent:.3f},{total_events},\"{lambdas}\",\"{votes}\"\n")
+                f.write(
+                    f'{episode_seed},{correct},{false_dec},{truncated},{steps},{events_per_agent:.3f},{total_events},"{lambdas}","{votes}"\n'
+                )
 
-                dmmd_results.append({
-                    "correct": correct,
-                    "truncated": truncated,
-                    "steps": steps,
-                    "total_events": total_events,
-                })
+                dmmd_results.append(
+                    {
+                        "correct": correct,
+                        "truncated": truncated,
+                        "steps": steps,
+                        "total_events": total_events,
+                    }
+                )
 
                 if (i + 1) % 10 == 0 or (i + 1) == eval_iterations:
-                    print(f"DMMD Episode {i+1}/{eval_iterations} complete.")
+                    print(f"DMMD Episode {i + 1}/{eval_iterations} complete.")
 
         print("DMMD Baseline Evaluation Complete.")
-        
+
         # --- Print side-by-side summary table ---
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("Evaluation Comparison Summary")
-        print("="*60)
-        print(f"| Metric | RL ({self.config['experiment']['test_run_name']}) | DMMD Baseline |")
+        print("=" * 60)
+        print(
+            f"| Metric | RL ({self.config['experiment']['test_run_name']}) | DMMD Baseline |"
+        )
         print("| --- | --- | --- |")
-        
+
         rl_success = np.mean([r["correct"] for r in rl_results]) * 100
         dmmd_success = np.mean([r["correct"] for r in dmmd_results]) * 100
         print(f"| Success Rate | {rl_success:.1f}% | {dmmd_success:.1f}% |")
@@ -222,30 +269,45 @@ class Experiment:
 
         rl_non_trunc = [r["steps"] for r in rl_results if not r["truncated"]]
         dmmd_non_trunc = [r["steps"] for r in dmmd_results if not r["truncated"]]
-        rl_avg_steps = np.mean(rl_non_trunc) if rl_non_trunc else float('nan')
-        dmmd_avg_steps = np.mean(dmmd_non_trunc) if dmmd_non_trunc else float('nan')
+        rl_avg_steps = np.mean(rl_non_trunc) if rl_non_trunc else float("nan")
+        dmmd_avg_steps = np.mean(dmmd_non_trunc) if dmmd_non_trunc else float("nan")
         print(f"| Avg Steps (decided) | {rl_avg_steps:.1f} | {dmmd_avg_steps:.1f} |")
 
-        rl_avg_events = np.mean([r["total_events"] for r in rl_results]) / self.config["experiment"]["num_agents"]
-        dmmd_avg_events = np.mean([r["total_events"] for r in dmmd_results]) / self.config["experiment"]["num_agents"]
+        rl_avg_events = (
+            np.mean([r["total_events"] for r in rl_results])
+            / self.config["experiment"]["num_agents"]
+        )
+        dmmd_avg_events = (
+            np.mean([r["total_events"] for r in dmmd_results])
+            / self.config["experiment"]["num_agents"]
+        )
         print(f"| Avg Events/Agent | {rl_avg_events:.1f} | {dmmd_avg_events:.1f} |")
-        print("="*60)
+        print("=" * 60)
 
         print(f"Comparison complete! CSV files written to:")
         print(f"  - RL policy: {rl_csv_path}")
         print(f"  - DMMD baseline: {dmmd_csv_path}")
-        print("="*60)
-
-
+        print("=" * 60)
 
     def train(self):
         print("Starting training with MAPPO (PPO + shared policy)")
         print("Run name: ", self.config["experiment"]["test_run_name"])
+        print("=" * 60)
+        print(self.config["experiment"])
+        print("=")
+        print(self.config["rewards"])
+        print("=" * 60)
 
         register_env("swarm_decision_v1", self.create_env)
 
-        policy_file_name = os.path.abspath(f"policies/{self.config['experiment']['test_run_name']}")
-        initial_train_checkpoint = int(policy_file_name.split("checkpoint-")[-1]) if "checkpoint-" in policy_file_name else 0
+        policy_file_name = os.path.abspath(
+            f"policies/{self.config['experiment']['test_run_name']}"
+        )
+        initial_train_checkpoint = (
+            int(policy_file_name.split("checkpoint-")[-1])
+            if "checkpoint-" in policy_file_name
+            else 0
+        )
         last_saved_train_checkpoint = initial_train_checkpoint
 
         train_seed = self.config["experiment"]["base_seed"] + initial_train_checkpoint
@@ -254,7 +316,11 @@ class Experiment:
         training_iterations = self.config["experiment"]["training_iterations"]
         entropy_coeff = self.config["experiment"]["entropy_coeff"]
 
-        entropy_coeff_schedule = [[0, entropy_coeff], [int(training_iterations * 0.5 * steps_per_iter), 0.5 * entropy_coeff], [int(training_iterations * 0.8 * steps_per_iter), 0.1 * entropy_coeff]]
+        entropy_coeff_schedule = [
+            [0, entropy_coeff],
+            [int(training_iterations * 0.5 * steps_per_iter), 0.5 * entropy_coeff],
+            [int(training_iterations * 0.8 * steps_per_iter), 0.1 * entropy_coeff],
+        ]
 
         config = (
             PPOConfig()
@@ -265,7 +331,7 @@ class Experiment:
                 train_batch_size=steps_per_iter,
                 entropy_coeff=entropy_coeff_schedule,
                 clip_param=self.config["experiment"]["clip_param"],
-                vf_clip_param=self.config["experiment"]["vf_clip_param"]
+                vf_clip_param=self.config["experiment"]["vf_clip_param"],
             )
             .env_runners(num_env_runners=60)
             .multi_agent(
@@ -298,55 +364,88 @@ class Experiment:
             learners = result.get("learners", {})
             if "shared_policy" in learners:
                 entropy = learners["shared_policy"].get("entropy", "N/A")
-                curr_entropy_coeff = learners["shared_policy"].get("curr_entropy_coeff", "N/A")
-            
+                curr_entropy_coeff = learners["shared_policy"].get(
+                    "curr_entropy_coeff", "N/A"
+                )
+
             # Fallback: old API path
             if entropy == "N/A":
                 info = result.get("info", {})
-                learner_info = info.get("learner", {}).get("shared_policy", info.get("learner", {}))
+                learner_info = info.get("learner", {}).get(
+                    "shared_policy", info.get("learner", {})
+                )
                 learner_stats = learner_info.get("learner_stats", learner_info)
                 entropy = learner_stats.get("entropy", "N/A")
-                curr_entropy_coeff = learner_stats.get("entropy_coeff", curr_entropy_coeff)
+                curr_entropy_coeff = learner_stats.get(
+                    "entropy_coeff", curr_entropy_coeff
+                )
 
             # Debug: print result keys on first iteration to find correct path
             if i == 0:
                 print(f"[DEBUG] Top-level result keys: {list(result.keys())}")
                 if "learners" in result:
-                    print(f"[DEBUG] result['learners'] keys: {list(result['learners'].keys())}")
+                    print(
+                        f"[DEBUG] result['learners'] keys: {list(result['learners'].keys())}"
+                    )
                     for k, v in result["learners"].items():
                         if isinstance(v, dict):
-                            print(f"[DEBUG] result['learners']['{k}'] keys: {list(v.keys())}")
+                            print(
+                                f"[DEBUG] result['learners']['{k}'] keys: {list(v.keys())}"
+                            )
 
             # Format to 4 decimal places if float
-            entropy_str = f"{entropy:.4f}" if isinstance(entropy, (float, int)) and entropy != "N/A" else str(entropy)
-            coeff_str = f"{curr_entropy_coeff:.4f}" if isinstance(curr_entropy_coeff, (float, int)) and curr_entropy_coeff != "N/A" else str(curr_entropy_coeff)
+            entropy_str = (
+                f"{entropy:.4f}"
+                if isinstance(entropy, (float, int)) and entropy != "N/A"
+                else str(entropy)
+            )
+            coeff_str = (
+                f"{curr_entropy_coeff:.4f}"
+                if isinstance(curr_entropy_coeff, (float, int))
+                and curr_entropy_coeff != "N/A"
+                else str(curr_entropy_coeff)
+            )
 
-            print(f"Iteration {i+1}/{training_iterations} | Mean Episode Reward: {reward} | Entropy: {entropy_str} | Entropy Coeff: {coeff_str}")
+            print(
+                f"Iteration {i + 1}/{training_iterations} | Mean Episode Reward: {reward} | Entropy: {entropy_str} | Entropy Coeff: {coeff_str}"
+            )
 
             if (i + 1) % 100 == 0:
                 checkpoint_train_iteration = initial_train_checkpoint + i + 1
-                filename = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_train_iteration)
+                filename = (
+                    policy_file_name.split("checkpoint-")[0]
+                    + "checkpoint-"
+                    + str(checkpoint_train_iteration)
+                )
                 algo.save(filename)
                 print(f"Latest save: training iteration {checkpoint_train_iteration}")
 
         algo.stop()
         print("Training complete!")
         checkpoint_iteration = initial_train_checkpoint + training_iterations
-        policy_file_name = policy_file_name.split("checkpoint-")[0] + "checkpoint-" + str(checkpoint_iteration)
+        policy_file_name = (
+            policy_file_name.split("checkpoint-")[0]
+            + "checkpoint-"
+            + str(checkpoint_iteration)
+        )
         algo.save(policy_file_name)
 
     def compare_policies(self):
-        print("="*60)
+        print("=" * 60)
         print("Starting Policy Comparison Suite")
-        print("="*60)
+        print("=" * 60)
 
         register_env("swarm_decision_v1", self.create_env)
         base_seed = self.config["experiment"]["base_seed"]
         eval_iterations = self.config["experiment"]["eval_iterations"]
         mode = self.config.get("compare_policies", {}).get("mode", "both")
 
-        path_a = os.path.abspath(f"policies/{self.config['compare_policies']['policy_a_path']}")
-        path_b = os.path.abspath(f"policies/{self.config['compare_policies']['policy_b_path']}")
+        path_a = os.path.abspath(
+            f"policies/{self.config['compare_policies']['policy_a_path']}"
+        )
+        path_b = os.path.abspath(
+            f"policies/{self.config['compare_policies']['policy_b_path']}"
+        )
 
         print(f"Loading Policy A from: {path_a}")
         config_a = (
@@ -383,36 +482,42 @@ class Experiment:
         def get_actions(module, obs_dict, ids):
             if not ids:
                 return {}
-            obs_tensor = torch.from_numpy(np.array([obs_dict[aid] for aid in ids], dtype=np.float32))
+            obs_tensor = torch.from_numpy(
+                np.array([obs_dict[aid] for aid in ids], dtype=np.float32)
+            )
             with torch.no_grad():
                 output = module.forward_inference({SampleBatch.OBS: obs_tensor})
             logits = output["action_dist_inputs"]
             num_loc_actions = self.config["experiment"]["num_locations"] + 1
 
-            loc_logits  = logits[:, :num_loc_actions]
-            dur_means   = logits[:, num_loc_actions : num_loc_actions + 2]
-            vote_logits = logits[:, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions]
+            loc_logits = logits[:, :num_loc_actions]
+            dur_means = logits[:, num_loc_actions : num_loc_actions + 2]
+            vote_logits = logits[
+                :, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions
+            ]
 
             loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
-            dur_params  = dur_means.cpu().numpy()
+            dur_params = dur_means.cpu().numpy()
             vote_actions = torch.argmax(vote_logits, dim=1).cpu().numpy()
 
             return {
                 aid: {
-                    "location":        np.int64(loc),
-                    "duration_params":  np.array([dp[0], dp[1]], dtype=np.float32),
-                    "vote":            np.int64(vote),
+                    "location": np.int64(loc),
+                    "duration_params": np.array([dp[0], dp[1]], dtype=np.float32),
+                    "vote": np.int64(vote),
                 }
-                for aid, loc, dp, vote in zip(ids, loc_actions, dur_params, vote_actions)
+                for aid, loc, dp, vote in zip(
+                    ids, loc_actions, dur_params, vote_actions
+                )
             }
 
         # -------------------------------------------------------------
         # Independent Evaluation Mode
         # -------------------------------------------------------------
-        print("\n" + "-"*60)
+        print("\n" + "-" * 60)
         print("Running Independent Evaluation (Side-by-Side)")
-        print("-"*60)
-        
+        print("-" * 60)
+
         results = {"Policy A": [], "Policy B": []}
         for label, module in [("Policy A", module_a), ("Policy B", module_b)]:
             print(f"Evaluating {label}...")
@@ -436,39 +541,59 @@ class Experiment:
                 steps = base_env.current_step
                 correct = base_env.swarm_decision == base_env.experiment_best_location
                 truncated = truncateds["__all__"]
-                total_events = sum([sum(agent.events_at_location) for agent in base_env.agent_objects])
-                    
-                results[label].append({
-                    "steps": steps,
-                    "correct": correct,
-                    "truncated": truncated,
-                    "total_events": total_events,
-                    "reward": total_reward
-                })
-            
+                total_events = sum(
+                    [sum(agent.events_at_location) for agent in base_env.agent_objects]
+                )
+
+                results[label].append(
+                    {
+                        "steps": steps,
+                        "correct": correct,
+                        "truncated": truncated,
+                        "total_events": total_events,
+                        "reward": total_reward,
+                    }
+                )
+
             # Print Independent Results Table
             print("\n### Independent Comparison Summary ###")
             print("| Metric | Policy A | Policy B |")
             print("| --- | --- | --- |")
-            for metric in ["Success Rate", "Avg Steps to Decision", "Truncation Rate", "Avg Events/Agent", "Avg Total Reward"]:
+            for metric in [
+                "Success Rate",
+                "Avg Steps to Decision",
+                "Truncation Rate",
+                "Avg Events/Agent",
+                "Avg Total Reward",
+            ]:
                 if metric == "Success Rate":
                     val_a = np.mean([r["correct"] for r in results["Policy A"]]) * 100
                     val_b = np.mean([r["correct"] for r in results["Policy B"]]) * 100
                     print(f"| {metric} | {val_a:.1f}% | {val_b:.1f}% |")
                 elif metric == "Avg Steps to Decision":
                     # average steps of non-truncated runs
-                    non_trunc_a = [r["steps"] for r in results["Policy A"] if not r["truncated"]]
-                    non_trunc_b = [r["steps"] for r in results["Policy B"] if not r["truncated"]]
-                    val_a = np.mean(non_trunc_a) if non_trunc_a else float('nan')
-                    val_b = np.mean(non_trunc_b) if non_trunc_b else float('nan')
+                    non_trunc_a = [
+                        r["steps"] for r in results["Policy A"] if not r["truncated"]
+                    ]
+                    non_trunc_b = [
+                        r["steps"] for r in results["Policy B"] if not r["truncated"]
+                    ]
+                    val_a = np.mean(non_trunc_a) if non_trunc_a else float("nan")
+                    val_b = np.mean(non_trunc_b) if non_trunc_b else float("nan")
                     print(f"| {metric} | {val_a:.1f} | {val_b:.1f} |")
                 elif metric == "Truncation Rate":
                     val_a = np.mean([r["truncated"] for r in results["Policy A"]]) * 100
                     val_b = np.mean([r["truncated"] for r in results["Policy B"]]) * 100
                     print(f"| {metric} | {val_a:.1f}% | {val_b:.1f}% |")
                 elif metric == "Avg Events/Agent":
-                    val_a = np.mean([r["total_events"] for r in results["Policy A"]]) / self.config["experiment"]["num_agents"]
-                    val_b = np.mean([r["total_events"] for r in results["Policy B"]]) / self.config["experiment"]["num_agents"]
+                    val_a = (
+                        np.mean([r["total_events"] for r in results["Policy A"]])
+                        / self.config["experiment"]["num_agents"]
+                    )
+                    val_b = (
+                        np.mean([r["total_events"] for r in results["Policy B"]])
+                        / self.config["experiment"]["num_agents"]
+                    )
                     print(f"| {metric} | {val_a:.1f} | {val_b:.1f} |")
                 elif metric == "Avg Total Reward":
                     val_a = np.mean([r["reward"] for r in results["Policy A"]])
@@ -496,12 +621,13 @@ class Experiment:
             )
         )
         algo = config.build_algo()
-        checkpoint_path = os.path.abspath(f"policies/{self.config['experiment']['test_run_name']}")
+        checkpoint_path = os.path.abspath(
+            f"policies/{self.config['experiment']['test_run_name']}"
+        )
         algo.restore(checkpoint_path)
         print(f"Checkpoint geladen von: {checkpoint_path}")
 
         eval_iterations = self.config["experiment"]["eval_iterations"]
-        
 
         for i in range(eval_iterations):
             episode_seed = base_seed + i
@@ -516,12 +642,13 @@ class Experiment:
 
             self.action_logger.info(f"+ Starting new run")
 
-            # Actions have to be retrieved unneccessarily complicated over logits, because of 
+            # Actions have to be retrieved unneccessarily complicated over logits, because of
             # https://github.com/ray-project/ray/issues/40312
             while not terminateds["__all__"] and not truncateds["__all__"]:
-                
                 agent_ids = list(obs.keys())
-                obs_tensor = torch.from_numpy(np.array(list(obs.values()), dtype=np.float32))
+                obs_tensor = torch.from_numpy(
+                    np.array(list(obs.values()), dtype=np.float32)
+                )
                 output = module.forward_inference({SampleBatch.OBS: obs_tensor})
 
                 # action_dist_inputs layout for Dict(location: Discrete(N+1), duration_params: Box(2,), vote: Discrete(N+1)):
@@ -532,40 +659,51 @@ class Experiment:
                 logits = output["action_dist_inputs"]
                 num_loc_actions = self.config["experiment"]["num_locations"] + 1
 
-                loc_logits  = logits[:, :num_loc_actions]
-                dur_means   = logits[:, num_loc_actions : num_loc_actions + 2]  # (batch, 2)
-                vote_logits = logits[:, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions]
+                loc_logits = logits[:, :num_loc_actions]
+                dur_means = logits[
+                    :, num_loc_actions : num_loc_actions + 2
+                ]  # (batch, 2)
+                vote_logits = logits[
+                    :, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions
+                ]
 
                 # Deterministic location: argmax over Categorical logits
                 loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
                 # Deterministic duration: pass the raw means; environment applies softplus + Gamma
-                dur_params  = dur_means.cpu().numpy()  # shape (batch, 2)
+                dur_params = dur_means.cpu().numpy()  # shape (batch, 2)
                 # Deterministic vote: argmax over Categorical logits
                 vote_actions = torch.argmax(vote_logits, dim=1).cpu().numpy()
 
                 actions = {
                     agent_id: {
-                        "location":        np.int64(loc),
-                        "duration_params":  np.array([dp[0], dp[1]], dtype=np.float32),
-                        "vote":            np.int64(vote),
+                        "location": np.int64(loc),
+                        "duration_params": np.array([dp[0], dp[1]], dtype=np.float32),
+                        "vote": np.int64(vote),
                     }
-                    for agent_id, loc, dp, vote in zip(agent_ids, loc_actions, dur_params, vote_actions)
+                    for agent_id, loc, dp, vote in zip(
+                        agent_ids, loc_actions, dur_params, vote_actions
+                    )
                 }
                 obs, rewards, terminateds, truncateds, infos = env.step(actions)
-                total_reward += sum(rewards.values())      
-                
+                total_reward += sum(rewards.values())
+
                 # --- Debug Ausgaben ---
                 base_env = env.env.unwrapped
                 logging.info(f"\n--- Step: {base_env.current_step} ---")
                 agents_in_nest = len(base_env.nesting_agents)
                 votes = [0 for _ in range(self.config["experiment"]["num_locations"])]
-                sampling_agents = [len(base_env.sampling_agents[l]) for l in range(self.config["experiment"]["num_locations"])]
+                sampling_agents = [
+                    len(base_env.sampling_agents[l])
+                    for l in range(self.config["experiment"]["num_locations"])
+                ]
 
                 waiting_time = base_env._sample_gamma_duration(dur_params[0])
-                self.action_logger.info(f"+ agentids, loc_actions, dur_params[1], dur_params[2], waiting_time")
-                self.action_logger.info(f"{agent_ids[0]},{loc_actions[0]},{dur_params[0][0]:.3f},{dur_params[0][1]:.3f},{waiting_time}")
-        
-
+                self.action_logger.info(
+                    f"+ agentids, loc_actions, dur_params[1], dur_params[2], waiting_time"
+                )
+                self.action_logger.info(
+                    f"{agent_ids[0]},{loc_actions[0]},{dur_params[0][0]:.3f},{dur_params[0][1]:.3f},{waiting_time}"
+                )
 
                 correct_voting_agents = 0
                 for agent in base_env.agent_objects:
@@ -579,30 +717,44 @@ class Experiment:
                 logging.info(f"Votes: {votes}")
                 logging.info(f"Lambdas: {base_env.lambdas}")
                 logging.info(f"Correct Voting Agents: {correct_voting_agents}")
-                logging.info(f"Consensus: {correct_voting_agents / base_env.config['experiment']['num_agents']} [Needs: {base_env.config['experiment']['quorum_threshold']}]")   
-                
+                logging.info(
+                    f"Consensus: {correct_voting_agents / base_env.config['experiment']['num_agents']} [Needs: {base_env.config['experiment']['quorum_threshold']}]"
+                )
+
             print(f"\nTest abgeschlossen! Gesamt-Reward: {total_reward}")
-            
+
             steps_to_decision = base_env.current_step
-            correct_decision = base_env.swarm_decision == base_env.experiment_best_location
-            total_events_until_decision = sum([sum(agent.events_at_location) for agent in base_env.agent_objects])
-            events_experienced_per_agent = total_events_until_decision / self.config["experiment"]["num_agents"]        
-            lambda_difficulty = np.round((np.max(base_env.lambdas) - np.min(base_env.lambdas)) / np.max(base_env.lambdas), 3)
+            correct_decision = (
+                base_env.swarm_decision == base_env.experiment_best_location
+            )
+            total_events_until_decision = sum(
+                [sum(agent.events_at_location) for agent in base_env.agent_objects]
+            )
+            events_experienced_per_agent = (
+                total_events_until_decision / self.config["experiment"]["num_agents"]
+            )
+            lambda_difficulty = np.round(
+                (np.max(base_env.lambdas) - np.min(base_env.lambdas))
+                / np.max(base_env.lambdas),
+                3,
+            )
             truncated = truncateds["__all__"]
             lambdas = base_env.lambdas
 
-            self.metric_logger.info(f"{episode_seed},{steps_to_decision},{correct_decision},{total_events_until_decision},{events_experienced_per_agent},{lambda_difficulty},{truncated},{lambdas}")
+            self.metric_logger.info(
+                f"{episode_seed},{steps_to_decision},{correct_decision},{total_events_until_decision},{events_experienced_per_agent},{lambda_difficulty},{truncated},{lambdas}"
+            )
             algo.stop()
-        
-    def setup_logger(self, name, log_file, mode, level=logging.INFO, fmt='%(message)s'):
-         handler = logging.FileHandler(log_file, mode=mode)
-         handler.setFormatter(logging.Formatter(fmt))
-         logger = logging.getLogger(name)
-         logger.setLevel(level)
-         logger.addHandler(handler)
-         logger.propagate = False
-         return logger
-    
+
+    def setup_logger(self, name, log_file, mode, level=logging.INFO, fmt="%(message)s"):
+        handler = logging.FileHandler(log_file, mode=mode)
+        handler.setFormatter(logging.Formatter(fmt))
+        logger = logging.getLogger(name)
+        logger.setLevel(level)
+        logger.addHandler(handler)
+        logger.propagate = False
+        return logger
+
     def set_global_seeds(self, seed):
         random.seed(seed)
         np.random.seed(seed)
@@ -616,11 +768,11 @@ class Experiment:
         Runs the paper's DMMD baseline algorithm (Bayesian belief model +
         nest belief-sharing)
         """
-        print("="*60)
+        print("=" * 60)
         print("Starting DMMD Baseline Test (no neural network)")
         print(f"Run name : {self.config['experiment']['test_run_name']}")
         print(f"Episodes : {self.config['experiment']['eval_iterations']}")
-        print("="*60)
+        print("=" * 60)
 
         base_seed = self.config["experiment"]["base_seed"]
         eval_iterations = self.config["experiment"]["eval_iterations"]
@@ -655,7 +807,7 @@ class Experiment:
 
             outcome_str = metrics["outcome"].upper()
             print(
-                f"Episode {i+1:4d}/{eval_iterations} | {outcome_str:10s} | "
+                f"Episode {i + 1:4d}/{eval_iterations} | {outcome_str:10s} | "
                 f"Steps: {int(steps):>8,} | Events/Agent: {events_per_agent:6.1f} | "
                 f"Lambdas: {[f'{l:.5f}' for l in lambdas]}"
             )
@@ -667,11 +819,10 @@ class Experiment:
         avg_steps = np.mean([r["steps"] for r in decided]) if decided else float("nan")
         avg_events = np.mean([r["events_per_agent"] for r in results])
 
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("DMMD Baseline Summary")
         print(f"  Success Rate      : {success_rate:.1f}%")
         print(f"  Truncation Rate   : {trunc_rate:.1f}%")
         print(f"  Avg Steps (decided): {avg_steps:,.0f}")
         print(f"  Avg Events/Agent  : {avg_events:.1f}")
-        print("="*60)
-
+        print("=" * 60)

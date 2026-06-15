@@ -45,10 +45,13 @@ Plan: Policies evaluieren -> rl parameter tuning
         - auf gleiche prior bringen!!
         - rl hauptimprovement: mehr sampling zulassen!
            -> weniger time decay, höhere max steps!
-        Status 14:51 : 2 algos trainieren, einer gut einer instabil. Wenn fertig -> testen! 
+        Maßnahme jetzt: mehr timesteps, weniger time decay, höhere bestrafung bei falsch liegen
+        Zukunft maßnahmen: voten bestrafen wenn er sich zu unsicher ist, auch wenn er richtig lägen würde
 
       Währenddessen: dmmd + belief sharing implementieren
                      - experiment datei aufräumen
                      - runtime tests!
                      Status 14:51: runtime test läuft, muss noch ausgewertet dann (auswertdatei fertig), experimentdatei bisschen ausgeräumt.
-                     
+                     Status 17:42: runtime test überarbeitet da davor viel zu lange zum rechnen gebraucht hat. Runtime test läuft gut und immernoch
+
+Was noch gut wäre: im log einmal die ganze experiment und reward config ausgeben
