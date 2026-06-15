@@ -16,9 +16,12 @@ class SwarmDecisionEnvironment(AECEnv):
         "name": "swarm_decision_v1",
     }
 
-    def __init__(self, config):
+    def __init__(self, config, lambdas=None):
         self.config = config
-        self.lambdas = self.generateLambdas()
+        if(lambdas is None):
+            self.lambdas = self.generateLambdas()
+        else:
+            self.lambdas = lambdas
         self.sampling_agents = [[] for _ in range(self.config["experiment"]["num_locations"])]
         self.nesting_agents = []
         self.agents = []

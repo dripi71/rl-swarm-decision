@@ -61,7 +61,13 @@ class Experiment:
         next_run_idx = max(existing_runs) + 1 if existing_runs else 1
         run_dir = os.path.join(eval_dir, f"run{next_run_idx:02d}")
         os.makedirs(run_dir, exist_ok=True)
-        print(f"Saving comparison results to directory: {run_dir}")
+
+        config_out_path = os.path.join(run_dir, "configuration_stamp.yaml")
+        with open (config_out_path, "w") as f_cfg:
+            yaml.safe_dump(self.config, f_cfg, default_flow_style=False)
+
+        print(f"Saving comparison results and config timestamp to directory: {run_dir}")
+
 
         rl_csv_path = os.path.join(run_dir, "rl-algo.csv")
         dmmd_csv_path = os.path.join(run_dir, "dmmd-algo.csv")
@@ -244,14 +250,22 @@ class Experiment:
 
         train_seed = self.config["experiment"]["base_seed"] + initial_train_checkpoint
 
+        steps_per_iter = 30000
+        training_iterations = self.config["experiment"]["training_iterations"]
+        entropy_coeff = self.config["experiment"]["entropy_coeff"]
+
+        entropy_coeff_schedule = [[0, entropy_coeff], [int(training_iterations * 0.5 * steps_per_iter), 0.5 * entropy_coeff], [int(training_iterations * 0.8 * steps_per_iter), 0.1 * entropy_coeff]]
+
         config = (
             PPOConfig()
             .debugging(seed=train_seed)
             .environment("swarm_decision_v1")
             .framework("torch")
             .training(
-                train_batch_size=30000,
-                entropy_coeff=self.config["experiment"]["entropy_coeff"]
+                train_batch_size=steps_per_iter,
+                entropy_coeff=entropy_coeff_schedule,
+                clip_param=self.config["experiment"]["clip_param"],
+                vf_clip_param=self.config["experiment"]["vf_clip_param"]
             )
             .env_runners(num_env_runners=60)
             .multi_agent(
@@ -264,9 +278,6 @@ class Experiment:
         if self.config["experiment"]["load_checkpoint"]:
             algo.restore(policy_file_name)
             print(f"Checkpoint loaded from: {policy_file_name}")
-
-
-        training_iterations = self.config["experiment"]["training_iterations"]
 
         for i in range(training_iterations):
             result = algo.train()

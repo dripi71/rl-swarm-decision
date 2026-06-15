@@ -45,6 +45,10 @@ Plan: Policies evaluieren -> rl parameter tuning
         - auf gleiche prior bringen!!
         - rl hauptimprovement: mehr sampling zulassen!
            -> weniger time decay, höhere max steps!
+        Status 14:51 : 2 algos trainieren, einer gut einer instabil. Wenn fertig -> testen! 
+
       Währenddessen: dmmd + belief sharing implementieren
                      - experiment datei aufräumen
                      - runtime tests!
+                     Status 14:51: runtime test läuft, muss noch ausgewertet dann (auswertdatei fertig), experimentdatei bisschen ausgeräumt.
+                     
