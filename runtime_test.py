@@ -23,55 +23,45 @@ with open("tests/runtime_test.csv", "w") as f:
         for episodes_amount in episodes_amount_testing:
 
             for locations_amount in locations_amount_testing:
-                if locations_amount != 2:
-                    continue
                 config["experiment"]["num_locations"] = locations_amount
                 num_locations = locations_amount
 
                 #print("--- Initializing Swarm Environment ---")
 
-                start_time = time.perf_counter()
+                start_time = time.perf_counter()           
                 env = SwarmDecisionEnvironment(config)
-                env.reset()
 
                 for i in range(episodes_amount):
-                    agent_id = env.agent_selection
-                    if agent_id is None or len(env.agents) == 0:
-                        # Episode naturally finished because all agents terminated/truncated
-                        break
-                    if(not agent_id in env.agents):
-                        print(f"Round crashed for: Agents: {agents_amount}, Episodes: {episodes_amount}, Locations: {locations_amount}")
-                        print(f"  - agent_id: {agent_id}")
-                        print(f"  - env.agents: {env.agents}")
-                        print(f"  - env.terminations: {env.terminations}")
-                        print(f"  - env.truncations: {env.truncations}")
-                        print(f"  - env.prio_Q size: {len(env.prio_Q.Q)}")
-                        break
-                    obs, reward, termination, truncation, info = env.last()
-                    
-                    #print(f"\n[World Time: {env.current_step:.2f}] Agent {agent_id} ist an der reihe")
-                    
-                    if termination or truncation:
-                        action = None
-                        #print(f"Agent {agent_id} hat terminiert")
-                    else:
-                        random_destination = np.random.randint(0, num_locations + 1)
-                        random_dur_params = np.random.uniform(-3.0, 3.0, size=2).astype(np.float32)
-                        random_vote = np.random.randint(0, num_locations + 1)
+                    lambdas = np.random.uniform(0.01, 1.0, num_locations)
+                    env.reset(lambdas=lambdas) 
 
-                        action = {
-                            "location":        np.int64(random_destination),
-                            "duration_params":  random_dur_params,
-                            "vote":            np.int64(random_vote),
-                        }
-                        
-                        #print(f"Action Prompt: Agent wählt {random_destination} für {random_duration} Steps")
+                    while True:
+                        agent_id = env.agent_selection
+                        if agent_id is None or len(env.agents) == 0:
+                            # Episode naturally finished because all agents terminated/truncated
+                            break
+                        obs, reward, termination, truncation, info = env.last()
+                                                
+                        if termination or truncation:
+                            action = None
+                        else:
+                            random_destination = np.random.randint(0, num_locations + 1)
+                            random_dur_params = np.random.uniform(-3.0, 3.0, size=2).astype(np.float32)
+                            random_vote = np.random.randint(0, num_locations + 1)
 
-                    env.step(action)
+                            action = {
+                                "location":        np.int64(random_destination),
+                                "duration_params":  random_dur_params,
+                                "vote":            np.int64(random_vote),
+                            }
+                            
+                            #print(f"Action Prompt: Agent wählt {random_destination} für {random_duration} Steps")
+
+                        env.step(action)
                 end_time = time.perf_counter()
                 runtime_in_ms = (end_time - start_time) * 1000
 
-                print(f"{agents_amount}, {episodes_amount}, {locations_amount}, {runtime_in_ms}\n")
-                f.write(f"{agents_amount}, {episodes_amount}, {locations_amount}, {runtime_in_ms}\n")
+                print(f"{agents_amount},{episodes_amount},{locations_amount},{runtime_in_ms}\n")
+                f.write(f"{agents_amount},{episodes_amount},{locations_amount},{runtime_in_ms}\n")
             
 print("Test run complete!")

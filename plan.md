@@ -23,8 +23,7 @@ quorum_achieved (yes / no)
 lambdas
 
 
-(!!!) eigentlich wird beim eval die logits greedy evaluiert! -> problem mit schwarm movement
-Nächsten schritte: 
+
 
 Runs evaluierbar machen:
 - Mehrere Runs durchführbar machen
@@ -41,3 +40,11 @@ Parameter tuning pushing 80% acc:
 - entropy coeff mit der zeit reduzieren
 - learning time reduzieren
 - 
+
+Plan: Policies evaluieren -> rl parameter tuning
+        - auf gleiche prior bringen!!
+        - rl hauptimprovement: mehr sampling zulassen!
+           -> weniger time decay, höhere max steps!
+      Währenddessen: dmmd + belief sharing implementieren
+                     - experiment datei aufräumen
+                     - runtime tests!

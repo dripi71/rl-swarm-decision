@@ -69,7 +69,7 @@ class SwarmDecisionEnvironment(AECEnv):
         self._training_log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "logs", "training_episodes.csv")
         self._write_log_header()
 
-    def reset(self, seed=None, options=None):
+    def reset(self, seed=None, options=None, lambdas=None):
         if seed is not None:
             np.random.seed(seed)
         self.prio_Q = Priority_Q()
@@ -80,7 +80,10 @@ class SwarmDecisionEnvironment(AECEnv):
         self.locations = []
         self.swarm_decision = None
         self.sampling_agents = [[] for _ in range(self.config["experiment"]["num_locations"])]
-        self.lambdas = self.generateLambdas()
+        if lambdas is not None:
+            self.lambdas = lambdas
+        else:
+            self.lambdas = self.generateLambdas()
         self.experiment_best_location = np.argmin(self.lambdas)
         self.createLocationsAndAgents()
         self.rewards = { agent: 0 for agent in self.agents}
@@ -479,7 +482,7 @@ class SwarmDecisionEnvironment(AECEnv):
             pass
 
     def _log_episode_summary(self, outcome):
-        if self.config["experiment"]["training"] == False:
+        if self.config["experiment"]["mode"] != "train":
             return
 
         stats = self.episode_stats
