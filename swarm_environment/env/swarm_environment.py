@@ -180,7 +180,7 @@ class SwarmDecisionEnvironment(AECEnv):
                 quality_score[vote_action], best_by_quality, atol=1e-5
             )
             uncertainty_of_vote = 1.0 / np.sqrt(events[vote_action] + alpha_0)
-            if is_best_choice and uncertainty_of_vote < 0.99:
+            if is_best_choice and uncertainty_of_vote < 0.6:
                 r_vote = 1.0
             elif not is_best_choice:
                 r_vote = -1.0
