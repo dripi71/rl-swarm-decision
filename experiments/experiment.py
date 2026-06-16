@@ -5,6 +5,7 @@ from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from swarm_environment.env.swarm_environment import SwarmDecisionEnvironment
 from swarm_environment.env.baseline_environment import BaselineSimulation
+from config.constants import PredictionKeys
 import os
 import numpy as np
 import torch
@@ -133,17 +134,16 @@ class Experiment:
                     with torch.no_grad():
                         output = module.forward_inference({SampleBatch.OBS: obs_tensor})
                     logits = output["action_dist_inputs"]
-                    num_loc_actions = self.config["experiment"]["num_locations"] + 1
+                    dur_means, loc_logits, vote_logits = self.extractFromLogits(logits)
 
-                    loc_logits = logits[:, :num_loc_actions]
-                    dur_means = logits[:, num_loc_actions : num_loc_actions + 2]
-                    vote_logits = logits[
-                        :, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions
-                    ]
+                    # softmax sampling
+                    loc_dist = torch.distributions.Categorical(logits=loc_logits)
+                    loc_actions = loc_dist.sample().cpu().numpy()
 
-                    loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
                     dur_params = dur_means.cpu().numpy()
-                    vote_actions = torch.argmax(vote_logits, dim=1).cpu().numpy()
+
+                    vote_dist = torch.distributions.Categorical(logits=vote_logits)
+                    vote_actions = vote_dist.sample().cpu().numpy()
 
                     actions = {
                         agent_id: {
@@ -318,8 +318,8 @@ class Experiment:
 
         entropy_coeff_schedule = [
             [0, entropy_coeff],
-            [int(training_iterations * 0.5 * steps_per_iter), 0.5 * entropy_coeff],
-            [int(training_iterations * 0.8 * steps_per_iter), 0.1 * entropy_coeff],
+            [int(training_iterations * 0.3 * steps_per_iter), 0.3 * entropy_coeff],
+            [int(training_iterations * 0.7 * steps_per_iter), 0.05 * entropy_coeff],
         ]
 
         config = (
@@ -488,14 +488,7 @@ class Experiment:
             with torch.no_grad():
                 output = module.forward_inference({SampleBatch.OBS: obs_tensor})
             logits = output["action_dist_inputs"]
-            num_loc_actions = self.config["experiment"]["num_locations"] + 1
-
-            loc_logits = logits[:, :num_loc_actions]
-            dur_means = logits[:, num_loc_actions : num_loc_actions + 2]
-            vote_logits = logits[
-                :, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions
-            ]
-
+            dur_means, loc_logits, vote_logits = self.extractFromLogits(logits, module)
             loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
             dur_params = dur_means.cpu().numpy()
             vote_actions = torch.argmax(vote_logits, dim=1).cpu().numpy()
@@ -606,6 +599,8 @@ class Experiment:
 
     def test(self):
         print("Started policy test")
+        print("Method test is deprecated!")
+        return
         register_env("swarm_decision_v1", self.create_env)
         base_seed = self.config["experiment"]["base_seed"]
 
@@ -649,29 +644,19 @@ class Experiment:
                 obs_tensor = torch.from_numpy(
                     np.array(list(obs.values()), dtype=np.float32)
                 )
-                output = module.forward_inference({SampleBatch.OBS: obs_tensor})
+                # output = module.forward_inference({SampleBatch.OBS: obs_tensor})
 
-                # action_dist_inputs layout for Dict(location: Discrete(N+1), duration_params: Box(2,), vote: Discrete(N+1)):
-                #   [:N+1]         → location logits (Categorical)
-                #   [N+1:N+3]      → duration Gaussian means (mu_x1, mu_x2)
-                #   [N+3:N+5]      → duration Gaussian log std devs
-                #   [N+5:N+5+N+1]  → vote logits (Categorical)
+                with torch.no_grad():
+                    input_batch = {"obs": obs_tensor}
+                    output = module.forward_inference(input_batch)
+
                 logits = output["action_dist_inputs"]
-                num_loc_actions = self.config["experiment"]["num_locations"] + 1
+                dur_means, loc_logits, vote_logits = self.extractFromLogits(
+                    logits, module
+                )
 
-                loc_logits = logits[:, :num_loc_actions]
-                dur_means = logits[
-                    :, num_loc_actions : num_loc_actions + 2
-                ]  # (batch, 2)
-                vote_logits = logits[
-                    :, num_loc_actions + 4 : num_loc_actions + 4 + num_loc_actions
-                ]
-
-                # Deterministic location: argmax over Categorical logits
                 loc_actions = torch.argmax(loc_logits, dim=1).cpu().numpy()
-                # Deterministic duration: pass the raw means; environment applies softplus + Gamma
-                dur_params = dur_means.cpu().numpy()  # shape (batch, 2)
-                # Deterministic vote: argmax over Categorical logits
+                dur_params = dur_means.cpu().numpy()
                 vote_actions = torch.argmax(vote_logits, dim=1).cpu().numpy()
 
                 actions = {
@@ -826,3 +811,11 @@ class Experiment:
         print(f"  Avg Steps (decided): {avg_steps:,.0f}")
         print(f"  Avg Events/Agent  : {avg_events:.1f}")
         print("=" * 60)
+
+    def extractFromLogits(self, logits):
+        num_loc_actions = self.config["experiment"]["num_locations"] + 1
+        dur_means = logits[:, 0:2]
+        location_logits = logits[:, 4 : 4 + num_loc_actions]
+        vote_logits = logits[:, 4 + num_loc_actions : 4 + 2 * num_loc_actions]
+
+        return dur_means, location_logits, vote_logits
