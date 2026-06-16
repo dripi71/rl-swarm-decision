@@ -90,17 +90,17 @@ class BaselineSimulation:
 
     def _dispatch(self, event: list) -> None:
         etype = event[QObjectIndices.EVENTTYPE]
-        match etype:
-            case ActionTypes.LOCATION_EVENT:
-                self._on_location_event(event)
-            case ActionTypes.SAMPLING:
-                self._on_sampling(event)
-            case ActionTypes.SAMPLING_FINISHED:
-                self._on_sampling_finished(event)
-            case ActionTypes.NESTING:
-                self._on_nesting(event)
-            case ActionTypes.NESTING_FINISHED:
-                self._on_nesting_finished(event)
+
+        if etype == ActionTypes.LOCATION_EVENT:
+            self._on_location_event(event)
+        elif etype == ActionTypes.SAMPLING:
+            self._on_sampling(event)
+        elif etype == ActionTypes.SAMPLING_FINISHED:
+            self._on_sampling_finished(event)
+        elif etype == ActionTypes.NESTING:
+            self._on_nesting(event)
+        elif etype == ActionTypes.NESTING_FINISHED:
+            self._on_nesting_finished(event)
 
     def _on_location_event(self, event: list) -> None:
         loc = event[QObjectIndices.AGENTID]
@@ -148,9 +148,20 @@ class BaselineSimulation:
         agent_id = event[QObjectIndices.AGENTID]
         agent = self.agent_objects[agent_id]
 
+        # Add agent to nesting list first so others can read its belief
         self.nesting_agents.append(agent)
-        # Dmmd with belief sharing:
-        # agent.communicate_in_nest(self.nesting_agents)
+
+        # DMMD + belief sharing:
+        # Only the newly arriving agent updates its belief by averaging with all
+        # currently nesting agents. The others are passive data sources
+
+        is_dmmd_bel_share = (
+            True
+            if self.config["experiment"]["baseline_algo"] == "DMMD_bel_share"
+            else False
+        )
+        if is_dmmd_bel_share and len(self.nesting_agents) > 1:
+            agent.communicate_in_nest(self.nesting_agents)
 
         # Compute dissemination time
         nest_duration = agent.compute_nest_time()

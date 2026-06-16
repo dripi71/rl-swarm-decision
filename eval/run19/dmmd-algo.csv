@@ -1,0 +1,6 @@
+seed,correct,false,truncated,steps_until_decision,events_per_agent,events_total,lambdas,votes
+462,True,False,False,364808,31.740,1587,"[0.0001, 5e-05]","[14, 35]"
+463,True,False,False,344730,24.920,1246,"[0.0001, 5e-05]","[14, 35]"
+464,True,False,False,386505,19.740,987,"[5e-05, 0.0001]","[35, 15]"
+465,True,False,False,351379,27.400,1370,"[0.0001, 5e-05]","[15, 35]"
+466,True,False,False,342354,27.520,1376,"[0.0001, 5e-05]","[15, 35]"

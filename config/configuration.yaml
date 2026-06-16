@@ -11,17 +11,18 @@ experiment:
   # (!) timesteps, not agent steps
   max_steps: 8e6
   min_sampling_duration: 100
-  test_run_name: "run_Easy_mso_s_50_checkpoint-0"
-  load_checkpoint: false
+  test_run_name: "run_Easy_mso_s_50_lower_entropy_checkpoint-600"
+  load_checkpoint: true
   # Modes: test     -  compares given policy against baseline
   #        train    -  trains a new or existing policy
   #        compare  -  compares two policies against eachother
   #        baseline -  runs a given baseline
-  mode: "train"
+  mode: "test"
   training_iterations: 800
   eval_iterations: 500
+  baseline_algo: "DMMD"
   base_seed: 462
-  entropy_coeff: 0.02
+  entropy_coeff: 0.01
   clip_param: 0.2
   vf_clip_param: 10.0
   #old prior beta: 10000.0
