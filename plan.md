@@ -48,5 +48,13 @@ Plan: Policies evaluieren -> rl parameter tuning
         Zukunft maßnahmen: voten bestrafen wenn er sich zu unsicher ist, auch wenn er richtig lägen würde
 
 
-TODO: LOGITS RICHTIG AUSWERTEN!!
-VOTING BESTRAFEN WENN SCHLECHT GEVOTET
+# In generateLambdas / reset: speichere die Permutation
+self._loc_perm = np.random.permutation(num_locations)  # z.B. [1, 0] oder [0, 1]
+self.lambdas = self.lambdas[self._loc_perm]
+
+# In observe(): quality_score und andere loc-features entsprechend permutieren
+quality_score = quality_score[self._loc_perm]
+relative_uncertainty = relative_uncertainty[self._loc_perm]
+
+# In step(): vote_action zurück-permutieren
+actual_vote = self._loc_perm[vote_action]  # mappt Netz-Output auf echten Location-Index

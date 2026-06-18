@@ -318,8 +318,8 @@ class Experiment:
 
         entropy_coeff_schedule = [
             [0, entropy_coeff],
-            [int(training_iterations * 0.3 * steps_per_iter), 0.3 * entropy_coeff],
-            [int(training_iterations * 0.7 * steps_per_iter), 0.05 * entropy_coeff],
+            [int(training_iterations * 0.6 * steps_per_iter), 0.5 * entropy_coeff],
+            [int(training_iterations * 0.8 * steps_per_iter), 0.2 * entropy_coeff],
         ]
 
         config = (

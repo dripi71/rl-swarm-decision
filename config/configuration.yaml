@@ -11,7 +11,7 @@ experiment:
   # (!) timesteps, not agent steps
   max_steps: 8e6
   min_sampling_duration: 100
-  test_run_name: "run_Easy_stricter_voting_checkpoint-0"
+  test_run_name: "run_Easy_stricter_voting_h_entr_checkpoint-0"
   load_checkpoint: false
   # Modes: test     -  compares given policy against baseline
   #        train    -  trains a new or existing policy
@@ -22,7 +22,7 @@ experiment:
   eval_iterations: 500
   baseline_algo: "DMMD"
   base_seed: 462
-  entropy_coeff: 0.01
+  entropy_coeff: 0.015
   clip_param: 0.2
   vf_clip_param: 10.0
   #old prior beta: 10000.0

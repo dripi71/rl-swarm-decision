@@ -173,8 +173,8 @@ class SwarmDecisionEnvironment(AECEnv):
             events = np.array(agent.events_at_location, dtype=np.float32)
             timesteps = np.array(agent.timesteps_at_location, dtype=np.float32)
             posterior_rate = (events + alpha_0) / (timesteps + beta_0)
-            max_rate = (0 + alpha_0) / (1 + beta_0)
-            quality_score = 1.0 - (posterior_rate / max_rate)
+            prior_rate = (0 + alpha_0) / (1 + beta_0)
+            quality_score = 1.0 - (posterior_rate / prior_rate)
             best_by_quality = np.max(quality_score)
             is_best_choice = np.isclose(
                 quality_score[vote_action], best_by_quality, atol=1e-5
@@ -269,8 +269,8 @@ class SwarmDecisionEnvironment(AECEnv):
 
         posterior_rate = (events + alpha_0) / (timesteps + beta_0)
         relative_uncertainty = 1.0 / np.sqrt(events + alpha_0)
-        max_rate = (0 + alpha_0) / (1 + beta_0)
-        quality_score = 1.0 - (posterior_rate / max_rate)
+        prior_rate = (0 + alpha_0) / (1 + beta_0)
+        quality_score = 1.0 - (posterior_rate / prior_rate)
 
         # Two very important observation metrics: relative uncertainty and quality score
         # The relative uncertainty shows how close the agent is to the true rate, only improves if events are spottet!
