@@ -173,21 +173,26 @@ class SwarmDecisionEnvironment(AECEnv):
             events = np.array(agent.events_at_location, dtype=np.float32)
             timesteps = np.array(agent.timesteps_at_location, dtype=np.float32)
             posterior_rate = (events + alpha_0) / (timesteps + beta_0)
-            prior_rate = (0 + alpha_0) / (1 + beta_0)
-            quality_score = 1.0 - (posterior_rate / prior_rate)
+
+            max_posterior = np.max(posterior_rate)
+            quality_score = 1.0 - (posterior_rate / max_posterior)
             best_by_quality = np.max(quality_score)
             is_best_choice = np.isclose(
                 quality_score[vote_action], best_by_quality, atol=1e-5
             )
             uncertainty_of_vote = 1.0 / np.sqrt(events[vote_action] + alpha_0)
-            if is_best_choice and uncertainty_of_vote < 0.2:
-                r_vote = 1.0
-            elif not is_best_choice:
-                r_vote = -1.0
-            else:
-                r_vote = 0.0
+            prev_uncertainty = agent.uncertainty_at_last_vote[vote_action]
+            uncertainty_reduction = prev_uncertainty - uncertainty_of_vote
 
-            self.rewards[agent.id] += r_vote * self.config["rewards"]["r_vote_amp"]
+            if is_best_choice:
+                r_vote = (
+                    max(0.0, uncertainty_reduction)
+                    * self.config["rewards"]["r_vote_amp"]
+                )
+            else:
+                r_vote = -1.0
+
+            self.rewards[agent.id] += r_vote
 
             self.episode_stats["votes_cast"] += 1
 
@@ -269,13 +274,14 @@ class SwarmDecisionEnvironment(AECEnv):
 
         posterior_rate = (events + alpha_0) / (timesteps + beta_0)
         relative_uncertainty = 1.0 / np.sqrt(events + alpha_0)
-        prior_rate = (0 + alpha_0) / (1 + beta_0)
-        quality_score = 1.0 - (posterior_rate / prior_rate)
+
+        max_posterior = np.max(posterior_rate)
+        quality_score = 1.0 - (posterior_rate / max_posterior)
 
         # Two very important observation metrics: relative uncertainty and quality score
         # The relative uncertainty shows how close the agent is to the true rate, only improves if events are spottet!
         # Absolute uncertainty is useless here because it would be certain that the lambda is low (But we know that already! (prior))
-        # Quality score: how good the location is compared to the other locations
+        # Quality score: how good the location is compared to the other locations, inverted because high quality -> good location, low events
 
         self_vote = np.zeros(num_locations, dtype=np.float32)
         if agent.current_vote is not None:
