@@ -11,7 +11,7 @@ experiment:
   # (!) timesteps, not agent steps
   max_steps: 8e6
   min_sampling_duration: 100
-  test_run_name: "run_Easy_stricter_voting_h_entr_checkpoint-0"
+  test_run_name: "run_Easy_voting_extremely_strict_checkpoint-0"
   load_checkpoint: false
   # Modes: test     -  compares given policy against baseline
   #        train    -  trains a new or existing policy
@@ -38,8 +38,8 @@ rewards:
   reward_for_wrong_decision: -35
   reward_for_timeout: -40
   r_uncert_amp: 20
-  r_explore_time_amp: 1.0
-  r_vote_amp: 1.5
+  r_explore_time_amp: 0.6
+  r_vote_amp: 1.0
   # 1e7, 1e7 * 5e-6 = 50
   # solving bonus: solved_reward - steps * solved_bonus_time_decay
   # The solving bonus should be >=0 when reaching max steps, otherwise it penalizes correct solving

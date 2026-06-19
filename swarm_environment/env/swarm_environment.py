@@ -180,7 +180,7 @@ class SwarmDecisionEnvironment(AECEnv):
                 quality_score[vote_action], best_by_quality, atol=1e-5
             )
             uncertainty_of_vote = 1.0 / np.sqrt(events[vote_action] + alpha_0)
-            if is_best_choice and uncertainty_of_vote < 0.6:
+            if is_best_choice and uncertainty_of_vote < 0.2:
                 r_vote = 1.0
             elif not is_best_choice:
                 r_vote = -1.0
@@ -280,18 +280,16 @@ class SwarmDecisionEnvironment(AECEnv):
         self_vote = np.zeros(num_locations, dtype=np.float32)
         if agent.current_vote is not None:
             self_vote[agent.current_vote] = 1.0
-        nest_votes_ratio = np.zeros(num_locations, dtype=np.float32)
+
         # if the agent is currently in the nest, show opinions of other nesting agents
-        # Agents that have been sampling a location longer have stronger opinions
+        nest_votes = np.zeros(num_locations, dtype=np.float32)
         if agent.next_location == self.nest_loc_index:
-            total_weight = 0.0
             for nest_agent in self.nesting_agents:
                 if nest_agent.current_vote is not None:
-                    weight = nest_agent.timesteps_at_location[nest_agent.current_vote]
-                    nest_votes_ratio[nest_agent.current_vote] += weight
-                    total_weight += weight
-            if total_weight > 0:
-                nest_votes_ratio = nest_votes_ratio / total_weight
+                    nest_votes[nest_agent.current_vote] += 1
+            # normalize
+            nest_votes = nest_votes / len(self.nesting_agents)
+
         # add step time to give agent a feeling how much time it has left
         obs_step_time = np.array(
             [self.current_step / float(self.config["experiment"]["max_steps"])],
@@ -318,7 +316,7 @@ class SwarmDecisionEnvironment(AECEnv):
                 quality_score,
                 relative_uncertainty,
                 self_vote,
-                nest_votes_ratio,
+                nest_votes,
                 obs_step_time,
                 obs_step_at_current_location,
                 agent_id_norm,
