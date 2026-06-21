@@ -12,12 +12,23 @@ import torch
 import logging
 import math
 import random
+from pathlib import Path
 
 
 class Experiment:
     def __init__(self):
         with open("config/configuration.yaml", "r") as f:
             self.config = yaml.safe_load(f)
+
+        test_run_name = self.config["experiment"]["test_run_name"]
+        log_file_path = Path("logs/last_run.txt")
+        action_log_path = Path(f"logs/actions/{test_run_name}.csv")
+        metric_log_path = Path(f"logs/metrics/{test_run_name}.csv")
+
+        log_file_path.parent.mkdir(parents=True, exist_ok=True)
+        action_log_path.parent.mkdir(parents=True, exist_ok=True)
+        metric_log_path.parent.mkdir(parents=True, exist_ok=True)
+
         logging.basicConfig(
             filename="logs/last_run.txt",
             filemode="w",

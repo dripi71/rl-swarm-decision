@@ -3,3 +3,5 @@ venv/
 *Test_run_*/
 logs/
 job_outputs/
+eval/
+plan.md

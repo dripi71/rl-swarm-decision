@@ -70,8 +70,9 @@ tensorboard==2.20.0
 tensorboard-data-server==0.7.2
 tensorboardX==2.6.5
 torch==2.11.0
-torchvision==0.26.0+cpu
+torchvision==0.26.0
 triton==3.6.0
+typeguard==4.5.2
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.7.0
