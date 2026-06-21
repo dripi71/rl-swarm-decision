@@ -189,6 +189,7 @@ class SwarmDecisionEnvironment(AECEnv):
                     max(0.0, uncertainty_reduction)
                     * self.config["rewards"]["r_vote_amp"]
                 )
+                agent.uncertainty_at_last_vote[vote_action] = uncertainty_of_vote
             else:
                 r_vote = -1.0
 
