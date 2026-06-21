@@ -6,12 +6,13 @@ from config.constants import PredictionKeys
 from config.constants import QObjectIndices
 import numpy as np
 from agents.agent import Agent
+from swarm_environment.env.base_environment import SwarmBase
 import logging
 import random
 import os
 
 
-class SwarmDecisionEnvironment(AECEnv):
+class SwarmDecisionEnvironment(AECEnv, SwarmBase):
     metadata = {
         "name": "swarm_decision_v1",
     }
@@ -19,7 +20,7 @@ class SwarmDecisionEnvironment(AECEnv):
     def __init__(self, config, lambdas=None):
         self.config = config
         if lambdas is None:
-            self.lambdas = self.generateLambdas()
+            self.lambdas = self.generate_lambdas()
         else:
             self.lambdas = lambdas
         self.sampling_agents = [
@@ -106,7 +107,7 @@ class SwarmDecisionEnvironment(AECEnv):
         if lambdas is not None:
             self.lambdas = lambdas
         else:
-            self.lambdas = self.generateLambdas()
+            self.lambdas = self.generate_lambdas()
         self.experiment_best_location = np.argmin(self.lambdas)
         self.createLocationsAndAgents()
         self.rewards = {agent: 0 for agent in self.agents}
@@ -116,18 +117,6 @@ class SwarmDecisionEnvironment(AECEnv):
         self.infos = {agent: {} for agent in self.agents}
         self.episode_count += 1
         self._init_episode_stats()
-
-    def generateLambdas(self):
-        if self.config["experiment"]["current_hardness"] == "easy":
-            red_loc_lambda = self.config["experiment"]["red_env_lambda_easy"]
-        else:
-            red_loc_lambda = self.config["experiment"]["red_env_lambda_hard"]
-        blue_loc_lambda = self.config["experiment"]["blue_env_lambda"]
-        blue_left = np.random.randint(0, 2)
-        if blue_left:
-            return np.array([blue_loc_lambda, red_loc_lambda])
-        else:
-            return np.array([red_loc_lambda, blue_loc_lambda])
 
     def step(self, action):
         if (
@@ -373,6 +362,7 @@ class SwarmDecisionEnvironment(AECEnv):
         scale = mean / alpha
 
         sample = np.random.gamma(shape=alpha, scale=scale)
+        # return round(float(sample))
         return min(max_duration, max(min_duration, round(float(sample))))
 
     def render(self):
@@ -380,13 +370,6 @@ class SwarmDecisionEnvironment(AECEnv):
 
     def close(self):
         pass
-
-    def calculate_travel_time(self, location1, location2):
-        if location1 == location2:
-            # Takes one step in order to prevent freezing time
-            return 1
-        else:
-            return self.config["experiment"]["travel_time"]
 
     def get_agent_by_id(self, id):
         return self.agent_objects[id]
@@ -491,27 +474,6 @@ class SwarmDecisionEnvironment(AECEnv):
 
         global_state = np.concatenate([agent_counts, true_lambdas])
         return global_state
-
-    def check_consensus(self):
-        quorum_threshold = self.config["experiment"]["quorum_threshold"]
-        assert quorum_threshold > 0.5, (
-            "Quorum threshold must be strictly greater than 0.5"
-        )
-        num_agents = self.config["experiment"]["num_agents"]
-        required_votes = num_agents * quorum_threshold
-        votes = {loc: 0 for loc in range(self.config["experiment"]["num_locations"])}
-
-        # Consensus is checked globally
-        for agent in self.agent_objects:
-            if agent.current_vote is not None:
-                votes[agent.current_vote] += 1
-
-        # there must be enough votes (quorum) to make a decision
-        for loc, vote_count in votes.items():
-            if vote_count >= required_votes:
-                # return the location where the required votes are met
-                return loc
-        return None
 
     def influence_agent(self, agent):
         # DMMD belief sharing

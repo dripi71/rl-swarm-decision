@@ -5,9 +5,10 @@ import logging
 from priority_queue.priority_queue import Priority_Q
 from config.constants import ActionTypes, QObjectIndices
 from agents.bayesian_agent import BaselineAgent
+from swarm_environment.env.base_environment import SwarmBase
 
 
-class BaselineSimulation:
+class BaselineSimulation(SwarmBase):
     def __init__(self, config: dict):
         self.config = config
         self.num_locations = config["experiment"]["num_locations"]
@@ -32,7 +33,7 @@ class BaselineSimulation:
         if seed is not None:
             np.random.seed(seed)
 
-        self.lambdas = self._generate_lambdas()
+        self.lambdas = self.generate_lambdas()
         self.experiment_best_location = int(np.argmin(self.lambdas))
         self.swarm_decision = None
         self.current_step = 0.0
@@ -55,19 +56,6 @@ class BaselineSimulation:
             delay = max(1, round(np.random.exponential(scale=1.0 / self.lambdas[loc])))
             self.prio_Q.add([loc, ActionTypes.LOCATION_EVENT, delay])
 
-    def _generate_lambdas(self) -> np.ndarray:
-        hardness = self.config["experiment"]["current_hardness"]
-        red_lambda = (
-            self.config["experiment"]["red_env_lambda_easy"]
-            if hardness == "easy"
-            else self.config["experiment"]["red_env_lambda_hard"]
-        )
-        blue_lambda = self.config["experiment"]["blue_env_lambda"]
-        blue_left = np.random.randint(0, 2)
-        return np.array(
-            [blue_lambda, red_lambda] if blue_left else [red_lambda, blue_lambda]
-        )
-
     def run_episode(self) -> dict:
         # Run a complete episode
         while True:
@@ -80,7 +68,7 @@ class BaselineSimulation:
             self._dispatch(event)
 
             # Check quorum after every event
-            decision = self._check_consensus()
+            decision = self.check_consensus()
             if decision is not None:
                 self.swarm_decision = decision
                 outcome = (
@@ -140,7 +128,7 @@ class BaselineSimulation:
 
         self.sampling_agents[loc].remove(agent)
 
-        tt = self._travel_time(loc, self.nest_loc_index)
+        tt = self.calculate_travel_time(loc, self.nest_loc_index)
         agent.next_location = self.nest_loc_index
         self.prio_Q.add([agent_id, ActionTypes.NESTING, self.current_step + tt])
 
@@ -191,25 +179,8 @@ class BaselineSimulation:
         agent.next_location = loc
         agent.next_location_duration = obs_time
 
-        tt = self._travel_time(self.nest_loc_index, loc)
+        tt = self.calculate_travel_time(self.nest_loc_index, loc)
         self.prio_Q.add([agent_id, ActionTypes.SAMPLING, self.current_step + tt])
-
-    def _travel_time(self, from_loc: int, to_loc: int) -> int:
-        if from_loc == to_loc:
-            return 1
-        return self.config["experiment"]["travel_time"]
-
-    def _check_consensus(self) -> int | None:
-        num_agents = self.config["experiment"]["num_agents"]
-        required = num_agents * self.quorum_threshold
-        votes: dict[int, int] = {}
-        for agent in self.agent_objects:
-            if agent.current_vote is not None:
-                votes[agent.current_vote] = votes.get(agent.current_vote, 0) + 1
-        for loc, count in votes.items():
-            if count >= required:
-                return loc
-        return None
 
     def _metrics(self, outcome: str) -> dict:
         total_events = sum(sum(a.events_at_location) for a in self.agent_objects)
