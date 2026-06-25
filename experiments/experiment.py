@@ -21,20 +21,13 @@ class Experiment:
             self.config = yaml.safe_load(f)
 
         test_run_name = self.config["experiment"]["test_run_name"]
-        log_file_path = Path("logs/last_run.txt")
+
         action_log_path = Path(f"logs/actions/{test_run_name}.csv")
         metric_log_path = Path(f"logs/metrics/{test_run_name}.csv")
 
-        log_file_path.parent.mkdir(parents=True, exist_ok=True)
         action_log_path.parent.mkdir(parents=True, exist_ok=True)
         metric_log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        logging.basicConfig(
-            filename="logs/last_run.txt",
-            filemode="w",
-            level=logging.INFO,
-            format="%(message)s",
-        )
         test_run_name = self.config["experiment"]["test_run_name"]
         self.action_logger = self.setup_logger(
             name="action_logger", log_file=f"logs/actions/{test_run_name}.csv", mode="w"

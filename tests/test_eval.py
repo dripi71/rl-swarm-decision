@@ -1,5 +1,6 @@
 import pandas as pd
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -21,20 +22,33 @@ locations_amount_testing = config["testing"]["locations"]
 df = pd.read_csv("tests/runtime_test.csv", sep=",")
 
 for location_amount in locations_amount_testing:
-    
     df_filtered_ep = df[df["locations"] == int(location_amount)].copy()
 
-    print(df_filtered_ep)
-    df_filtered_ep = df_filtered_ep[df_filtered_ep["episodes"].isin(episodes_amount_testing)]
+    # runtime in minutes
+    df_filtered_ep["runtime"] = df_filtered_ep["runtime"] / (1000 * 60)
+
+    df_filtered_ep = df_filtered_ep[
+        df_filtered_ep["episodes"].isin(episodes_amount_testing)
+    ]
     df_filtered_ep["episodes"] = df_filtered_ep["episodes"].astype(str)
-    legend_order = sorted([int(x) for x in episodes_amount_testing])
+    legend_order = [str(x) for x in sorted(episodes_amount_testing)]
 
     plt.figure(figsize=(10, 6))
-    sns.lineplot(data=df_filtered_ep, x="agents", y="runtime", hue="episodes", hue_order=legend_order, marker="o", palette="viridis")
+    sns.lineplot(
+        data=df_filtered_ep,
+        x="agents",
+        y="runtime",
+        hue="episodes",
+        hue_order=legend_order,
+        marker="o",
+        palette="viridis",
+    )
 
-    plt.title(f"Runtime in dependency of agents and episodes (location fixed = {location_amount})")
+    plt.title(
+        f"Runtime in dependency of agents and episodes (location fixed = {location_amount})"
+    )
     plt.xlabel("Number of Agents")
-    plt.ylabel("Runtime (ms)")
+    plt.ylabel("Runtime (min)")
     plt.legend(title="Number of Episodes")
     plt.grid(True, linestyle="--", alpha=0.7)
     plt.savefig(f"tests/Runtime_agents_location_{location_amount}.png")

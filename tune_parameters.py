@@ -1,14 +1,7 @@
-# tune_parameters.py
-#
-# ARCHITECTURE NOTE:
-#   num_env_runners=0 is mandatory in this Ray version when running inside Ray Tune.
-#   Any num_env_runners > 0 causes a placement group bundle conflict (Ray bug).
-#   To compensate for single-process rollouts being too slow to complete full
-#   episodes, we reduce max_steps in the environment for tuning only (500k vs 8M).
-#   This keeps episodes ~16x shorter so episode_reward_mean is actually reported.
-
 import math
 import os
+
+os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
 import ray
 from ray import tune
 from ray.tune.schedulers import ASHAScheduler
@@ -18,11 +11,33 @@ from ray.tune.registry import register_env
 import yaml
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from swarm_environment.env.swarm_environment import SwarmDecisionEnvironment
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
-# Ray Tune trial workers run in a different CWD (Ray's scratch dir on the node).
-# Resolve all paths relative to this script file, not the working directory.
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 _CONFIG_PATH = os.path.join(_PROJECT_ROOT, "config", "configuration.yaml")
+
+
+class SwarmMetricsCallback(DefaultCallbacks):
+    def on_episode_end(
+        self, *, worker, base_env, policies, episode, env_index, **kwargs
+    ):
+        pz_env = base_env.get_sub_environments()[env_index]
+        swarm_env = pz_env.env
+
+        correct_decision = (
+            swarm_env.swarm_decision == swarm_env.experiment_best_location
+            if swarm_env.swarm_decision is not None
+            else False
+        )
+
+        total_events = sum(
+            [sum(agent.events_at_location) for agent in swarm_env.agent_objects]
+        )
+        num_agents = len(swarm_env.agent_objects)
+        events_per_agent = total_events / num_agents if num_agents > 0 else 0.0
+
+        episode.custom_metrics["correct_decision"] = float(correct_decision)
+        episode.custom_metrics["events_per_agent"] = float(events_per_agent)
 
 
 def create_env(env_config):
@@ -55,6 +70,7 @@ def train_ppo(config):
         )
         .debugging(seed=462)
         .environment("swarm_tune_v1", env_config=env_cfg)
+        .callbacks(SwarmMetricsCallback)
         .framework("torch")
         .training(
             # Smaller batch than real training (30k) to keep iterations fast
@@ -77,23 +93,34 @@ def train_ppo(config):
 
     for i in range(config["training_iterations"]):
         result = algo.train()
-        reward = (
-            result.get("episode_reward_mean")
-            or result.get("sampler_results", {}).get("episode_reward_mean")
-        )
-        # Only report if a real episode completed (not NaN)
-        if reward is not None and not math.isnan(float(reward)):
-            tune.report({"episode_reward_mean": float(reward), "training_iteration": i + 1})
+
+        # Retrieve custom metrics logged by the callback
+        custom_metrics = result.get("env_runners", {}).get("custom_metrics", {})
+        success_rate = custom_metrics.get("correct_decision_mean")
+        events_per_agent = custom_metrics.get("events_per_agent_mean")
+
+        # Calculate a combined score to optimize: we want high success rate and few events
+        # Weight success rate highly (500) and penalize events/agent (1.0)
+        if success_rate is not None and events_per_agent is not None:
+            tuning_score = float(success_rate) * 500.0 - float(events_per_agent)
+        else:
+            tuning_score = None
+
+        # Only report if we have valid metrics
+        if tuning_score is not None and not math.isnan(tuning_score):
+            tune.report(
+                {
+                    "tuning_score": tuning_score,
+                    "success_rate": float(success_rate),
+                    "events_per_agent": float(events_per_agent),
+                    "training_iteration": i + 1,
+                }
+            )
 
     algo.stop()
 
 
-# ---------------------------------------------------------------------------
-# Search space
-# ---------------------------------------------------------------------------
-# num_env_runners=0 → each trial only needs 1-2 CPUs (main process).
-# With 64 CPUs we can run ~30 trials in parallel.
-CPUS_PER_TRIAL = 2
+CPUS_PER_TRIAL = 1
 
 search_space = {
     "entropy_coeff": tune.loguniform(0.005, 0.05),
@@ -108,7 +135,7 @@ if __name__ == "__main__":
     ray.init(num_cpus=64)
 
     scheduler = ASHAScheduler(
-        metric="episode_reward_mean",
+        metric="tuning_score",
         mode="max",
         max_t=200,
         grace_period=50,
@@ -116,7 +143,7 @@ if __name__ == "__main__":
     )
 
     searcher = OptunaSearch(
-        metric="episode_reward_mean",
+        metric="tuning_score",
         mode="max",
     )
 
@@ -126,17 +153,29 @@ if __name__ == "__main__":
         tune_config=tune.TuneConfig(
             scheduler=scheduler,
             search_alg=searcher,
-            num_samples=32,
+            num_samples=512,
         ),
     )
     results = tuner.fit()
 
     try:
-        best = results.get_best_result("episode_reward_mean", "max", filter_nan_and_inf=True)
+        best = results.get_best_result("tuning_score", "max", filter_nan_and_inf=True)
         print("Best config:", best.config)
-        print("Best reward:", best.metrics["episode_reward_mean"])
+        print("Best tuning score:", best.metrics["tuning_score"])
+        print("Best success rate:", best.metrics.get("success_rate"))
+        print("Best events/agent:", best.metrics.get("events_per_agent"))
     except RuntimeError as e:
         print(f"WARNING: {e}")
         print("All trials reported NaN — max_steps may still be too large.")
         df = results.get_dataframe()
-        print(df[["trial_id", "episode_reward_mean", "training_iteration"]].to_string())
+        print(
+            df[
+                [
+                    "trial_id",
+                    "tuning_score",
+                    "success_rate",
+                    "events_per_agent",
+                    "training_iteration",
+                ]
+            ].to_string()
+        )

@@ -2,7 +2,7 @@ from enum import IntEnum
 # QObject: [agentId, eventType, actionTime]
 
 class QObjectIndices(IntEnum):
-    AGENTID = 0
+    ID = 0
     EVENTTYPE = 1
     ACTIONTIME = 2
 
