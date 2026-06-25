@@ -7,7 +7,6 @@ from config.constants import QObjectIndices
 import numpy as np
 from agents.agent import Agent
 from swarm_environment.env.base_environment import SwarmBase
-import logging
 import random
 import os
 
@@ -72,21 +71,16 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
 
         self.possible_agents = self.agents[:]
 
-        logging.basicConfig(
-            filename="logs/last_run.txt",
-            filemode="w",
-            level=logging.INFO,
-            format="%(message)s",
-        )
-
         # Episode-level diagnostic logging
         self.episode_count = 0
         self._init_episode_stats()
+        training_name = self.config["experiment"]["test_run_name"]
         self._training_log_path = os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             "..",
             "..",
             "logs",
+            training_name,
             "training_episodes.csv",
         )
         self._write_log_header()
@@ -230,7 +224,6 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
             for agent_id in self.agents:
                 self.rewards[agent_id] += self.config["rewards"]["reward_for_timeout"]
             self.truncations = {agent: True for agent in self.agents}
-            logging.info(f"Maximum steps reached, truncated: {self.current_step}")
             self._log_episode_summary("truncated")
             self._accumulate_rewards()
             return
@@ -238,7 +231,7 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
         self._accumulate_rewards()
 
         # Next event that needs a prediction (prepare for next step)
-        self.agent_selection = next_event[QObjectIndices.AGENTID]
+        self.agent_selection = next_event[QObjectIndices.ID]
         self.current_step = next_event[QObjectIndices.ACTIONTIME]
 
     def observation_space(self, agent):
@@ -338,7 +331,7 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
 
         # Pop the first event to set the initial agent selection
         first_event = self.prio_Q.pop()
-        self.agent_selection = first_event[QObjectIndices.AGENTID]
+        self.agent_selection = first_event[QObjectIndices.ID]
         self.current_step = first_event[QObjectIndices.ACTIONTIME]
 
     def _softplus(self, x):
@@ -348,22 +341,12 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
         epsilon = self.config["experiment"]["gamma_epsilon"]
         x1, x2 = float(duration_params[0]), float(duration_params[1])
 
-        # x1 controls the mean duration above min_sampling_duration
-        min_duration = int(self.config["experiment"]["min_sampling_duration"])
-        max_duration = int(float(self.config["experiment"]["max_steps"]) / 10.0)
-        # factor of 10000, otherwise changes are not very feelable for the agent
-        mean_above_min = self._softplus(x1) * 1000.0
-        mean = min_duration + mean_above_min
-
-        # x2 controls the shape (alpha) parameter
+        mean = self._softplus(x1) * 1000.0
         alpha = self._softplus(x2) + epsilon
-
-        # mean = alpha * scale => scale = mean / alpha
         scale = mean / alpha
 
         sample = np.random.gamma(shape=alpha, scale=scale)
-        # return round(float(sample))
-        return min(max_duration, max(min_duration, round(float(sample))))
+        return round(float(sample))
 
     def render(self):
         pass
@@ -385,7 +368,7 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
     def process_deterministic_event(self, event):
 
         self.current_step = event[QObjectIndices.ACTIONTIME]
-        current_agent_id = event[QObjectIndices.AGENTID]
+        current_agent_id = event[QObjectIndices.ID]
 
         match event[QObjectIndices.EVENTTYPE]:
             case ActionTypes.NESTING:
@@ -450,7 +433,7 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
                 ]
                 self.prio_Q.add(nextEvent)
             case ActionTypes.LOCATION_EVENT:
-                location_id = event[QObjectIndices.AGENTID]
+                location_id = event[QObjectIndices.ID]
                 for agent in self.sampling_agents[location_id]:
                     agent.events_at_location[location_id] += 1
                 delay = max(

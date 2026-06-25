@@ -91,7 +91,7 @@ class BaselineSimulation(SwarmBase):
             self._on_nesting_finished(event)
 
     def _on_location_event(self, event: list) -> None:
-        loc = event[QObjectIndices.AGENTID]
+        loc = event[QObjectIndices.ID]
         for agent in self.sampling_agents[loc]:
             agent.record_event(self.current_step)
             agent.events_at_location[loc] += 1
@@ -100,7 +100,7 @@ class BaselineSimulation(SwarmBase):
         self.prio_Q.add([loc, ActionTypes.LOCATION_EVENT, self.current_step + delay])
 
     def _on_sampling(self, event: list) -> None:
-        agent_id = event[QObjectIndices.AGENTID]
+        agent_id = event[QObjectIndices.ID]
         agent = self.agent_objects[agent_id]
         loc = agent.next_location
 
@@ -118,7 +118,7 @@ class BaselineSimulation(SwarmBase):
         )
 
     def _on_sampling_finished(self, event: list) -> None:
-        agent_id = event[QObjectIndices.AGENTID]
+        agent_id = event[QObjectIndices.ID]
         agent = self.agent_objects[agent_id]
         loc = agent.next_location
 
@@ -133,7 +133,7 @@ class BaselineSimulation(SwarmBase):
         self.prio_Q.add([agent_id, ActionTypes.NESTING, self.current_step + tt])
 
     def _on_nesting(self, event: list) -> None:
-        agent_id = event[QObjectIndices.AGENTID]
+        agent_id = event[QObjectIndices.ID]
         agent = self.agent_objects[agent_id]
 
         # Add agent to nesting list first so others can read its belief
@@ -160,7 +160,7 @@ class BaselineSimulation(SwarmBase):
         )
 
     def _on_nesting_finished(self, event: list) -> None:
-        agent_id = event[QObjectIndices.AGENTID]
+        agent_id = event[QObjectIndices.ID]
         agent = self.agent_objects[agent_id]
 
         opinions = [0] * self.num_locations
