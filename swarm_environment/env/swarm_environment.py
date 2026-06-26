@@ -32,6 +32,7 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
         self.prio_Q = Priority_Q()
         self.current_step = 0
         self.swarm_decision = None
+        self.num_locations = self.config["experiment"]["num_locations"]
         self.experiment_best_location = np.argmin(self.lambdas)
         # The nest location index is the last index (num_locations because 0 is location 1)
         self.nest_loc_index = self.config["experiment"]["num_locations"]
@@ -47,21 +48,19 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
             agent: gym.spaces.Dict(
                 {
                     PredictionKeys.LOCATION: gym.spaces.Discrete(
-                        self.config["experiment"]["num_locations"] + 1
+                        self.num_locations + 1
                     ),
                     PredictionKeys.DURATION_PARAMS: gym.spaces.Box(
                         low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32
                     ),
-                    PredictionKeys.VOTE: gym.spaces.Discrete(
-                        self.config["experiment"]["num_locations"] + 1
-                    ),
+                    PredictionKeys.VOTE: gym.spaces.Discrete(self.num_locations + 1),
                 }
             )
             for agent in self.agents
         }
 
         # observation space: loc_obs (N+1) + quality_score (N) + relative_uncertainty (N) + self_vote (N) + nest_votes_ratio (N) + world_step_time + steps_at_current_location + Agent ID (break obs symmetrie) = 5*N + 2
-        obs_dim = 5 * self.config["experiment"]["num_locations"] + 1 + 1 + 1 + 1
+        obs_dim = 5 * self.num_locations + 1 + 1 + 1 + 1
         self.observation_spaces = {
             agent: gym.spaces.Box(
                 low=0.0, high=np.inf, shape=(obs_dim,), dtype=np.float32
@@ -95,9 +94,7 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
         self.agent_objects = []
         self.locations = []
         self.swarm_decision = None
-        self.sampling_agents = [
-            [] for _ in range(self.config["experiment"]["num_locations"])
-        ]
+        self.sampling_agents = [[] for _ in range(self.num_locations)]
         if lambdas is not None:
             self.lambdas = lambdas
         else:
@@ -167,16 +164,17 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
             prev_uncertainty = agent.uncertainty_at_last_vote[vote_action]
             uncertainty_reduction = prev_uncertainty - uncertainty_of_vote
 
-            if is_best_choice:
-                r_vote = (
-                    max(0.0, uncertainty_reduction)
-                    * self.config["rewards"]["r_vote_amp"]
-                )
-                agent.uncertainty_at_last_vote[vote_action] = uncertainty_of_vote
-            else:
-                r_vote = -1.0
+            if self.config["rewards"]["settings"]["r_vote_enabled"]:
+                if is_best_choice:
+                    r_vote = (
+                        max(0.0, uncertainty_reduction)
+                        * self.config["rewards"]["r_vote_amp"]
+                    )
+                    agent.uncertainty_at_last_vote[vote_action] = uncertainty_of_vote
+                else:
+                    r_vote = -1.0
 
-            self.rewards[agent.id] += r_vote
+                self.rewards[agent.id] += r_vote
 
             self.episode_stats["votes_cast"] += 1
 
@@ -201,14 +199,15 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
                 [agent.id, ActionTypes.NESTING, self.current_step + traveltime]
             )
         else:
-            # reward sampling at location
-            t_before = agent.timesteps_at_location[agent.next_location] + beta_0
-            t_after = t_before + agent.next_location_duration
-            r_time_explore = (
-                np.log(t_after / t_before)
-                * self.config["rewards"]["r_explore_time_amp"]
-            )
-            self.rewards[agent.id] += r_time_explore
+            if self.config["rewards"]["settings"]["r_explore_time_enabled"]:
+                # reward sampling at location
+                t_before = agent.timesteps_at_location[agent.next_location] + beta_0
+                t_after = t_before + agent.next_location_duration
+                r_time_explore = (
+                    np.log(t_after / t_before)
+                    * self.config["rewards"]["r_explore_time_amp"]
+                )
+                self.rewards[agent.id] += float(r_time_explore)
 
             self.prio_Q.add(
                 [agent.id, ActionTypes.SAMPLING, self.current_step + traveltime]
@@ -243,9 +242,8 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
     def observe(self, agent_id):
 
         agent = self.get_agent_by_id(agent_id)
-        num_locations = self.config["experiment"]["num_locations"]
         # one hot encoding for current location of agent
-        loc_obs = np.zeros((num_locations + 1), dtype=np.float32)
+        loc_obs = np.zeros((self.num_locations + 1), dtype=np.float32)
         loc_obs[agent.next_location] = 1.0
 
         # priors, otherwise when 0 events -> looks like perfect location
@@ -266,12 +264,12 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
         # Absolute uncertainty is useless here because it would be certain that the lambda is low (But we know that already! (prior))
         # Quality score: how good the location is compared to the other locations, inverted because high quality -> good location, low events
 
-        self_vote = np.zeros(num_locations, dtype=np.float32)
+        self_vote = np.zeros(self.num_locations, dtype=np.float32)
         if agent.current_vote is not None:
             self_vote[agent.current_vote] = 1.0
 
         # if the agent is currently in the nest, show opinions of other nesting agents
-        nest_votes = np.zeros(num_locations, dtype=np.float32)
+        nest_votes = np.zeros(self.num_locations, dtype=np.float32)
         if agent.next_location == self.nest_loc_index:
             for nest_agent in self.nesting_agents:
                 if nest_agent.current_vote is not None:
@@ -324,7 +322,7 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
             self.nesting_agents.append(agent)
             self.prio_Q.add([i, ActionTypes.NESTING_FINISHED, 0])
 
-        for i in range(self.config["experiment"]["num_locations"]):
+        for i in range(self.num_locations):
             self.locations.append(i)
             delay = max(1, round(np.random.exponential(scale=1.0 / self.lambdas[i])))
             self.prio_Q.add([i, ActionTypes.LOCATION_EVENT, self.current_step + delay])
@@ -399,12 +397,13 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
                 agent = self.get_agent_by_id(current_agent_id)
                 events_after = np.array(agent.events_at_location, dtype=np.float32)
                 alpha_0 = 1.0
-                uncertainties_after = 1.0 / np.sqrt(events_after + alpha_0)
-                r_uncertainty_reduction = (
-                    np.sum(agent.uncertainties_before - uncertainties_after)
-                    * self.config["rewards"]["r_uncert_amp"]
-                )
-                self.rewards[current_agent_id] += float(r_uncertainty_reduction)
+                if self.config["rewards"]["settings"]["r_uncert_enabled"]:
+                    uncertainties_after = 1.0 / np.sqrt(events_after + alpha_0)
+                    r_uncertainty_reduction = (
+                        np.sum(agent.uncertainties_before - uncertainties_after)
+                        * self.config["rewards"]["r_uncert_amp"]
+                    )
+                    self.rewards[current_agent_id] += float(r_uncertainty_reduction)
                 self.nesting_agents.remove(agent)
                 self.influence_agent(agent)
                 nextEvent = [
@@ -418,11 +417,12 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
 
                 events_after = np.array(agent.events_at_location, dtype=np.float32)
                 alpha_0 = 1.0
-                uncertainties_after = 1.0 / np.sqrt(events_after + alpha_0)
-                r_uncertainty_reduction = (
-                    np.sum(agent.uncertainties_before - uncertainties_after)
-                    * self.config["rewards"]["r_uncert_amp"]
-                )
+                if self.config["rewards"]["settings"]["r_uncert_enabled"]:
+                    uncertainties_after = 1.0 / np.sqrt(events_after + alpha_0)
+                    r_uncertainty_reduction = (
+                        np.sum(agent.uncertainties_before - uncertainties_after)
+                        * self.config["rewards"]["r_uncert_amp"]
+                    )
                 self.rewards[current_agent_id] += float(r_uncertainty_reduction)
 
                 self.sampling_agents[agent.next_location].remove(agent)
@@ -445,11 +445,10 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
                 )
 
     def state(self):
-        num_locations = self.config["experiment"]["num_locations"]
         num_agents = self.config["experiment"]["num_agents"]
 
-        agent_counts = np.zeros(num_locations + 1, dtype=np.float32)
-        for i in range(num_locations):
+        agent_counts = np.zeros(self.num_locations + 1, dtype=np.float32)
+        for i in range(self.num_locations):
             agent_counts[i] = len(self.sampling_agents[i]) / num_agents
         agent_counts[self.nest_loc_index] = len(self.nesting_agents) / num_agents
 
@@ -463,7 +462,7 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
         if len(self.nesting_agents) == 0:
             return
 
-        for location in range(self.config["experiment"]["num_locations"]):
+        for location in range(self.num_locations):
             a = agent.events_at_location[location]
             b = agent.timesteps_at_location[location]
 
@@ -506,12 +505,11 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
         return False
 
     def _init_episode_stats(self):
-        num_locs = self.config["experiment"]["num_locations"]
         self.episode_stats = {
             "total_decisions": 0,
             "votes_cast": 0,
             "votes_no_vote": 0,
-            "location_choices": [0] * (num_locs + 1),
+            "location_choices": [0] * (self.num_locations + 1),
             "sampling_durations": [],
         }
 
@@ -540,8 +538,7 @@ class SwarmDecisionEnvironment(AECEnv, SwarmBase):
 
         total_events = sum(sum(a.events_at_location) for a in self.agent_objects)
 
-        num_locs = self.config["experiment"]["num_locations"]
-        final_votes = [0] * num_locs
+        final_votes = [0] * self.num_locations
         no_vote_count = 0
         for agent in self.agent_objects:
             if agent.current_vote is not None:

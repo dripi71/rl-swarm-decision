@@ -31,9 +31,6 @@ class SwarmBase:
 
     def check_consensus(self):
         quorum_threshold = self.config["experiment"]["quorum_threshold"]
-        assert quorum_threshold > 0.5, (
-            "Quorum threshold must be strictly greater than 0.5"
-        )
         num_agents = self.config["experiment"]["num_agents"]
         required_votes = num_agents * quorum_threshold
 

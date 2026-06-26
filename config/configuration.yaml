@@ -10,7 +10,7 @@ experiment:
   gamma_epsilon: 0.01
   # (!) timesteps, not agent steps
   max_steps: 8e6
-  test_run_name: "5_loc_rl_5216021_checkpoint-0"
+  test_run_name: "10_loc_rl_5216021_checkpoint-0"
   load_checkpoint: false
   # Modes: test     -  compares given policy against baseline
   #        train    -  trains a new or existing policy
@@ -39,7 +39,6 @@ rewards:
     r_vote_enabled: true
     r_uncert_enabled: true
     r_explore_time_enabled: true
-    r_progress_reward_enabled: false
 
 testing:
   agents: [10, 50, 100, 200, 500, 1000, 2000]
