@@ -1,25 +1,25 @@
 experiment:
   num_agents: 50
-  num_locations: 10
+  num_locations: 5
   blue_env_lambda: 0.00005
   red_env_lambda_easy: 0.0001
   red_env_lambda_hard: 6.666666666666667e-5
-  current_hardness: "easy"
+  current_hardness: "hard"
   travel_time: 10
   quorum_threshold: 0.7
   gamma_epsilon: 0.01
   # (!) timesteps, not agent steps
   max_steps: 8e6
-  test_run_name: "10_loc_rl_5216021_checkpoint-0"
-  load_checkpoint: false
+  test_run_name: "5_loc_rl_5216021_checkpoint-600"
+  load_checkpoint: true
   # Modes: test     -  compares given policy against baseline
   #        train    -  trains a new or existing policy
   #        baseline -  runs a given baseline
-  mode: "train"
+  mode: "test"
   training_iterations: 800
   eval_iterations: 500
   # DMMD or DMMD_bel_share
-  baseline_algo: "DMMD"
+  baseline_algos: ["DMMD", "DMMD_bel_share"]
   base_seed: 462
   entropy_coeff: 0.023
   clip_param: 0.3
