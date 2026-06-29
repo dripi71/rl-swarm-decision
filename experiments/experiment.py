@@ -5,7 +5,7 @@ from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from swarm_environment.env.swarm_environment import SwarmDecisionEnvironment
 from swarm_environment.env.baseline_environment import BaselineSimulation
-from config.constants import PredictionKeys
+
 import os
 import numpy as np
 import torch
@@ -37,8 +37,13 @@ class Experiment:
         )
 
     def create_env(self, env_config):
-        with open("config/configuration.yaml", "r") as f:
-            config = yaml.safe_load(f)
+        if isinstance(env_config, dict) and "config" in env_config:
+            config = env_config["config"]
+        elif hasattr(self, "config") and self.config is not None:
+            config = self.config
+        else:
+            print("No config found!")
+            assert False, "No config found!"
         env = SwarmDecisionEnvironment(config)
         return PettingZooEnv(env)
 
@@ -83,20 +88,21 @@ class Experiment:
 
         print(f"Saving comparison results and config timestamp to directory: {run_dir}")
 
-        rl_csv_path = os.path.join(run_dir, "rl-algo.csv")
-        
-
         # Register environment if not already registered
         register_env("swarm_decision_v1", self.create_env)
         base_seed = self.config["experiment"]["base_seed"]
         eval_iterations = self.config["experiment"]["eval_iterations"]
+
+        # Ensure current_difficulty is initialized before build_algo
+        if "current_difficulty" not in self.config["experiment"]:
+            self.config["experiment"]["current_difficulty"] = "easy"
 
         # --- Phase 1: Evaluate RL Policy ---
         print("\nEvaluating RL Policy...")
         config = (
             PPOConfig()
             .debugging(seed=base_seed)
-            .environment("swarm_decision_v1")
+            .environment("swarm_decision_v1", env_config={"config": self.config})
             .framework("torch")
             .env_runners(num_env_runners=1)
             .multi_agent(
@@ -113,227 +119,280 @@ class Experiment:
 
         module = algo.get_module("shared_policy")
 
-        rl_results = []
-        with open(rl_csv_path, "w") as f:
-            f.write(
-                "seed,correct,false,truncated,steps_until_decision,events_per_agent,events_total,lambdas,votes\n"
-            )
-            for i in range(eval_iterations):
-                episode_seed = base_seed + i
-                self.set_global_seeds(episode_seed)
-
-                env = self.create_env({})
-                obs, info = env.reset(seed=episode_seed)
-                terminateds = {"__all__": False}
-                truncateds = {"__all__": False}
-                total_reward = 0
-
-                while not terminateds["__all__"] and not truncateds["__all__"]:
-                    agent_ids = list(obs.keys())
-                    obs_tensor = torch.from_numpy(
-                        np.array(list(obs.values()), dtype=np.float32)
-                    )
-                    with torch.no_grad():
-                        output = module.forward_inference({SampleBatch.OBS: obs_tensor})
-                    logits = output["action_dist_inputs"]
-                    dur_means, loc_logits, vote_logits = self.extractFromLogits(logits)
-
-                    # softmax sampling
-                    loc_dist = torch.distributions.Categorical(logits=loc_logits)
-                    loc_actions = loc_dist.sample().cpu().numpy()
-
-                    dur_params = dur_means.cpu().numpy()
-
-                    vote_dist = torch.distributions.Categorical(logits=vote_logits)
-                    vote_actions = vote_dist.sample().cpu().numpy()
-
-                    actions = {
-                        agent_id: {
-                            "location": np.int64(loc),
-                            "duration_params": np.array(
-                                [dp[0], dp[1]], dtype=np.float32
-                            ),
-                            "vote": np.int64(vote),
-                        }
-                        for agent_id, loc, dp, vote in zip(
-                            agent_ids, loc_actions, dur_params, vote_actions
-                        )
-                    }
-                    obs, rewards, terminateds, truncateds, infos = env.step(actions)
-                    total_reward += sum(rewards.values())
-
-                base_env = env.env.unwrapped
-                steps_to_decision = base_env.current_step
-                correct_decision = (
-                    base_env.swarm_decision == base_env.experiment_best_location
-                    if base_env.swarm_decision is not None
-                    else False
-                )
-                truncated = truncateds["__all__"]
-                false_decision = not correct_decision and not truncated
-                total_events_until_decision = sum(
-                    [sum(agent.events_at_location) for agent in base_env.agent_objects]
-                )
-                events_experienced_per_agent = (
-                    total_events_until_decision
-                    / self.config["experiment"]["num_agents"]
-                )
-                lambdas = [float(x) for x in base_env.lambdas]
-
-                votes = [0] * self.config["experiment"]["num_locations"]
-                for agent in base_env.agent_objects:
-                    if agent.current_vote is not None:
-                        if agent.current_vote < len(votes):
-                            votes[agent.current_vote] += 1
-                votes = [int(v) for v in votes]
-
-                f.write(
-                    f'{episode_seed},{correct_decision},{false_decision},{truncated},{steps_to_decision},{events_experienced_per_agent:.3f},{total_events_until_decision},"{lambdas}","{votes}"\n'
-                )
-
-                rl_results.append(
-                    {
-                        "correct": correct_decision,
-                        "truncated": truncated,
-                        "steps": steps_to_decision,
-                        "total_events": total_events_until_decision,
-                    }
-                )
-
-                if (i + 1) % 10 == 0 or (i + 1) == eval_iterations:
-                    print(f"RL Episode {i + 1}/{eval_iterations} complete.")
-
-        algo.stop()
-        print("RL Policy Evaluation Complete.")
-
-        # --- Phase 2: Evaluate DMMD Baselines ---
-
-        # Get baseline list from configuration
-        baselines = self.config["experiment"].get("baseline_algos")
+        difficulties = self.config["experiment"].get("difficulties", ["easy", "hard"])
+        if isinstance(difficulties, str):
+            difficulties = [difficulties]
+        baselines = self.config["experiment"].get("baseline_algos", [])
         if isinstance(baselines, str):
             baselines = [baselines]
 
-        baselines_results = {}
-        for baseline in baselines:
-            print(f"\nEvaluating {baseline}...")
-            # Temporarily modify configuration for the simulation to use the correct baseline algo
-            self.config["experiment"]["baseline_algo"] = baseline
-            
-            sim = BaselineSimulation(self.config)
-            
-            baseline_csv_path = os.path.join(run_dir, f"{baseline.lower()}-algo.csv")
-            baseline_results = []
-            
-            with open(baseline_csv_path, "w") as f:
+        all_summaries = {}
+
+        for difficulty in difficulties:
+            print("\n==========================================")
+            print(f"Evaluating with difficulty: {difficulty.upper()}")
+            print("==========================================")
+
+            self.config["experiment"]["current_difficulty"] = difficulty
+
+            rl_csv_path = os.path.join(run_dir, f"rl-algo-{difficulty}.csv")
+            rl_results = []
+
+            print(f"\nEvaluating RL Policy ({difficulty})...")
+            with open(rl_csv_path, "w") as f:
                 f.write(
                     "seed,correct,false,truncated,steps_until_decision,events_per_agent,events_total,lambdas,votes\n"
                 )
                 for i in range(eval_iterations):
                     episode_seed = base_seed + i
                     self.set_global_seeds(episode_seed)
-                    sim.reset(seed=episode_seed)
 
-                    metrics = sim.run_episode()
+                    env = self.create_env({})
+                    obs, info = env.reset(seed=episode_seed)
+                    terminateds = {"__all__": False}
+                    truncateds = {"__all__": False}
+                    total_reward = 0
 
-                    steps = metrics["steps"]
-                    correct = metrics["correct"]
-                    truncated = metrics["truncated"]
-                    false_dec = not correct and not truncated
-                    total_events = metrics["total_events"]
-                    events_per_agent = metrics["events_per_agent"]
-                    lambdas = [float(x) for x in metrics["lambdas"]]
-                    votes = [
-                        int(metrics["final_votes"].get(l, 0))
-                        for l in range(self.config["experiment"]["num_locations"])
-                    ]
+                    while not terminateds["__all__"] and not truncateds["__all__"]:
+                        agent_ids = list(obs.keys())
+                        obs_tensor = torch.from_numpy(
+                            np.array(list(obs.values()), dtype=np.float32)
+                        )
+                        with torch.no_grad():
+                            output = module.forward_inference(
+                                {SampleBatch.OBS: obs_tensor}
+                            )
+                        logits = output["action_dist_inputs"]
+                        dur_means, loc_logits, vote_logits = self.extractFromLogits(
+                            logits
+                        )
+
+                        # softmax sampling
+                        loc_dist = torch.distributions.Categorical(logits=loc_logits)
+                        loc_actions = loc_dist.sample().cpu().numpy()
+
+                        dur_params = dur_means.cpu().numpy()
+
+                        vote_dist = torch.distributions.Categorical(logits=vote_logits)
+                        vote_actions = vote_dist.sample().cpu().numpy()
+
+                        actions = {
+                            agent_id: {
+                                "location": np.int64(loc),
+                                "duration_params": np.array(
+                                    [dp[0], dp[1]], dtype=np.float32
+                                ),
+                                "vote": np.int64(vote),
+                            }
+                            for agent_id, loc, dp, vote in zip(
+                                agent_ids, loc_actions, dur_params, vote_actions
+                            )
+                        }
+                        obs, rewards, terminateds, truncateds, infos = env.step(actions)
+                        total_reward += sum(rewards.values())
+
+                    base_env = env.env.unwrapped
+                    steps_to_decision = base_env.current_step
+                    correct_decision = (
+                        base_env.swarm_decision == base_env.experiment_best_location
+                        if base_env.swarm_decision is not None
+                        else False
+                    )
+                    truncated = truncateds["__all__"]
+                    false_decision = not correct_decision and not truncated
+                    total_events_until_decision = sum(
+                        [
+                            sum(agent.events_at_location)
+                            for agent in base_env.agent_objects
+                        ]
+                    )
+                    events_experienced_per_agent = (
+                        total_events_until_decision
+                        / self.config["experiment"]["num_agents"]
+                    )
+                    lambdas = [float(x) for x in base_env.lambdas]
+
+                    votes = [0] * self.config["experiment"]["num_locations"]
+                    for agent in base_env.agent_objects:
+                        if agent.current_vote is not None:
+                            if agent.current_vote < len(votes):
+                                votes[agent.current_vote] += 1
+                    votes = [int(v) for v in votes]
 
                     f.write(
-                        f'{episode_seed},{correct},{false_dec},{truncated},{steps},{events_per_agent:.3f},{total_events},"{lambdas}","{votes}"\n'
+                        f'{episode_seed},{correct_decision},{false_decision},{truncated},{steps_to_decision},{events_experienced_per_agent:.3f},{total_events_until_decision},"{lambdas}","{votes}"\n'
                     )
 
-                    baseline_results.append(
+                    rl_results.append(
                         {
-                            "correct": correct,
+                            "correct": correct_decision,
                             "truncated": truncated,
-                            "steps": steps,
-                            "total_events": total_events,
+                            "steps": steps_to_decision,
+                            "total_events": total_events_until_decision,
                         }
                     )
 
                     if (i + 1) % 10 == 0 or (i + 1) == eval_iterations:
-                        print(f"{baseline} Episode {i + 1}/{eval_iterations} complete.")
-            
-            baselines_results[baseline] = {
-                "results": baseline_results,
-                "csv_path": baseline_csv_path
+                        print(
+                            f"RL ({difficulty}) Episode {i + 1}/{eval_iterations} complete."
+                        )
+
+            # --- Phase 2: Evaluate DMMD Baselines ---
+
+            baselines_results = {}
+            if baselines:
+                for baseline in baselines:
+                    print(f"\nEvaluating {baseline} ({difficulty})...")
+                    # Temporarily modify configuration for the simulation to use the correct baseline algo
+                    self.config["experiment"]["baseline_algo"] = baseline
+
+                    sim = BaselineSimulation(self.config)
+
+                    baseline_csv_path = os.path.join(
+                        run_dir, f"{baseline.lower()}-algo-{difficulty}.csv"
+                    )
+                    baseline_results = []
+
+                    with open(baseline_csv_path, "w") as f:
+                        f.write(
+                            "seed,correct,false,truncated,steps_until_decision,events_per_agent,events_total,lambdas,votes\n"
+                        )
+                        for i in range(eval_iterations):
+                            episode_seed = base_seed + i
+                            self.set_global_seeds(episode_seed)
+                            sim.reset(seed=episode_seed)
+
+                            metrics = sim.run_episode()
+
+                            steps = metrics["steps"]
+                            correct = metrics["correct"]
+                            truncated = metrics["truncated"]
+                            false_dec = not correct and not truncated
+                            total_events = metrics["total_events"]
+                            events_per_agent = metrics["events_per_agent"]
+                            lambdas = [float(x) for x in metrics["lambdas"]]
+                            votes = [
+                                int(metrics["final_votes"].get(l_idx, 0))
+                                for l_idx in range(
+                                    self.config["experiment"]["num_locations"]
+                                )
+                            ]
+
+                            f.write(
+                                f'{episode_seed},{correct},{false_dec},{truncated},{steps},{events_per_agent:.3f},{total_events},"{lambdas}","{votes}"\n'
+                            )
+
+                            baseline_results.append(
+                                {
+                                    "correct": correct,
+                                    "truncated": truncated,
+                                    "steps": steps,
+                                    "total_events": total_events,
+                                }
+                            )
+
+                            if (i + 1) % 10 == 0 or (i + 1) == eval_iterations:
+                                print(
+                                    f"{baseline} ({difficulty}) Episode {i + 1}/{eval_iterations} complete."
+                                )
+
+                    baselines_results[baseline] = {
+                        "results": baseline_results,
+                        "csv_path": baseline_csv_path,
+                    }
+                    print(f"{baseline} ({difficulty}) Baseline Evaluation Complete.")
+
+            all_summaries[difficulty] = {
+                "rl_results": rl_results,
+                "rl_csv_path": rl_csv_path,
+                "baselines_results": baselines_results,
             }
-            print(f"{baseline} Baseline Evaluation Complete.")
 
-        # --- Print side-by-side summary table ---
-        print("\n" + "=" * 60)
-        print("Evaluation Comparison Summary")
-        print("=" * 60)
-        
-        headers = [f"RL ({self.config['experiment']['test_run_name']})"] + baselines
-        header_str = " | ".join(headers)
-        print(f"| Metric | {header_str} |")
-        divider_str = " | ".join(["---"] * (len(headers) + 1))
-        print(f"| {divider_str} |")
+        algo.stop()
+        print("\nRL Policy Evaluation Complete.")
 
-        # Success Rate
-        rl_success = np.mean([r["correct"] for r in rl_results]) * 100
-        success_rates = [f"{rl_success:.1f}%"]
-        for baseline in baselines:
-            b_results = baselines_results[baseline]["results"]
-            b_success = np.mean([r["correct"] for r in b_results]) * 100
-            success_rates.append(f"{b_success:.1f}%")
-        success_str = " | ".join(success_rates)
-        print(f"| Success Rate | {success_str} |")
+        # --- Print side-by-side summary tables ---
+        for difficulty in difficulties:
+            summary = all_summaries[difficulty]
+            rl_results = summary["rl_results"]
+            rl_csv_path = summary["rl_csv_path"]
+            baselines_results = summary["baselines_results"]
 
-        # Truncation Rate
-        rl_trunc = np.mean([r["truncated"] for r in rl_results]) * 100
-        trunc_rates = [f"{rl_trunc:.1f}%"]
-        for baseline in baselines:
-            b_results = baselines_results[baseline]["results"]
-            b_trunc = np.mean([r["truncated"] for r in b_results]) * 100
-            trunc_rates.append(f"{b_trunc:.1f}%")
-        trunc_str = " | ".join(trunc_rates)
-        print(f"| Truncation Rate | {trunc_str} |")
+            print("\n" + "=" * 60)
+            print(f"Evaluation Comparison Summary - {difficulty.upper()} DIFFICULTY")
+            print("=" * 60)
+            if baselines:
+                headers = [
+                    f"RL ({self.config['experiment']['test_run_name']})"
+                ] + baselines
+            else:
+                headers = [f"RL ({self.config['experiment']['test_run_name']})"]
+            header_str = " | ".join(headers)
+            print(f"| Metric | {header_str} |")
+            divider_str = " | ".join(["---"] * (len(headers) + 1))
+            print(f"| {divider_str} |")
 
-        # Avg Steps (decided)
-        rl_non_trunc = [r["steps"] for r in rl_results if not r["truncated"]]
-        rl_avg_steps = np.mean(rl_non_trunc) if rl_non_trunc else float("nan")
-        avg_steps_list = [f"{rl_avg_steps:.1f}"]
-        for baseline in baselines:
-            b_results = baselines_results[baseline]["results"]
-            b_non_trunc = [r["steps"] for r in b_results if not r["truncated"]]
-            b_avg_steps = np.mean(b_non_trunc) if b_non_trunc else float("nan")
-            avg_steps_list.append(f"{b_avg_steps:.1f}")
-        steps_str = " | ".join(avg_steps_list)
-        print(f"| Avg Steps (decided) | {steps_str} |")
+            # Success Rate
+            rl_success = np.mean([r["correct"] for r in rl_results]) * 100
+            success_rates = [f"{rl_success:.1f}%"]
+            if baselines:
+                for baseline in baselines:
+                    b_results = baselines_results[baseline]["results"]
+                    b_success = np.mean([r["correct"] for r in b_results]) * 100
+                    success_rates.append(f"{b_success:.1f}%")
+            success_str = " | ".join(success_rates)
+            print(f"| Success Rate | {success_str} |")
 
-        # Avg Events/Agent
-        rl_avg_events = (
-            np.mean([r["total_events"] for r in rl_results])
-            / self.config["experiment"]["num_agents"]
-        )
-        avg_events_list = [f"{rl_avg_events:.1f}"]
-        for baseline in baselines:
-            b_results = baselines_results[baseline]["results"]
-            b_avg_events = (
-                np.mean([r["total_events"] for r in b_results])
+            # Truncation Rate
+            rl_trunc = np.mean([r["truncated"] for r in rl_results]) * 100
+            trunc_rates = [f"{rl_trunc:.1f}%"]
+            if baselines:
+                for baseline in baselines:
+                    b_results = baselines_results[baseline]["results"]
+                    b_trunc = np.mean([r["truncated"] for r in b_results]) * 100
+                    trunc_rates.append(f"{b_trunc:.1f}%")
+            trunc_str = " | ".join(trunc_rates)
+            print(f"| Truncation Rate | {trunc_str} |")
+
+            # Avg Steps (decided)
+            rl_non_trunc = [r["steps"] for r in rl_results if not r["truncated"]]
+            rl_avg_steps = np.mean(rl_non_trunc) if rl_non_trunc else float("nan")
+            avg_steps_list = [f"{rl_avg_steps:.1f}"]
+            if baselines:
+                for baseline in baselines:
+                    b_results = baselines_results[baseline]["results"]
+                    b_non_trunc = [r["steps"] for r in b_results if not r["truncated"]]
+                    b_avg_steps = np.mean(b_non_trunc) if b_non_trunc else float("nan")
+                    avg_steps_list.append(f"{b_avg_steps:.1f}")
+            steps_str = " | ".join(avg_steps_list)
+            print(f"| Avg Steps (decided) | {steps_str} |")
+
+            # Avg Events/Agent
+            rl_avg_events = (
+                np.mean([r["total_events"] for r in rl_results])
                 / self.config["experiment"]["num_agents"]
             )
-            avg_events_list.append(f"{b_avg_events:.1f}")
-        events_str = " | ".join(avg_events_list)
-        print(f"| Avg Events/Agent | {events_str} |")
-        print("=" * 60)
+            avg_events_list = [f"{rl_avg_events:.1f}"]
+            if baselines:
+                for baseline in baselines:
+                    b_results = baselines_results[baseline]["results"]
+                    b_avg_events = (
+                        np.mean([r["total_events"] for r in b_results])
+                        / self.config["experiment"]["num_agents"]
+                    )
+                avg_events_list.append(f"{b_avg_events:.1f}")
+            events_str = " | ".join(avg_events_list)
+            print(f"| Avg Events/Agent | {events_str} |")
+            print("=" * 60)
 
-        print(f"Comparison complete! CSV files written to:")
-        print(f"  - RL policy: {rl_csv_path}")
-        for baseline in baselines:
-            print(f"  - {baseline} baseline: {baselines_results[baseline]['csv_path']}")
-        print("=" * 60)
+            print("Comparison complete! CSV files written to:")
+            print(f"  - RL policy: {rl_csv_path}")
+            if baselines:
+                for baseline in baselines:
+                    print(
+                        f"  - {baseline} baseline: {baselines_results[baseline]['csv_path']}"
+                    )
+            print("=" * 60)
 
     def train(self):
         print("Starting training with MAPPO (PPO + shared policy)")
@@ -362,16 +421,19 @@ class Experiment:
         training_iterations = self.config["experiment"]["training_iterations"]
         entropy_coeff = self.config["experiment"]["entropy_coeff"]
 
+        offset_steps = initial_train_checkpoint * steps_per_iter
+        total_steps = (initial_train_checkpoint + training_iterations) * steps_per_iter
+
         entropy_coeff_schedule = [
             [0, entropy_coeff],
-            [int(training_iterations * 0.6 * steps_per_iter), 0.5 * entropy_coeff],
-            [int(training_iterations * 0.8 * steps_per_iter), 0.2 * entropy_coeff],
+            [max(0, int(total_steps * 0.6) - offset_steps), 0.5 * entropy_coeff],
+            [max(0, int(total_steps * 0.8) - offset_steps), 0.2 * entropy_coeff],
         ]
 
         config = (
             PPOConfig()
             .debugging(seed=train_seed)
-            .environment("swarm_decision_v1")
+            .environment("swarm_decision_v1", env_config={"config": self.config})
             .framework("torch")
             .training(
                 train_batch_size=steps_per_iter,
@@ -503,7 +565,6 @@ class Experiment:
 
         base_seed = self.config["experiment"]["base_seed"]
         eval_iterations = self.config["experiment"]["eval_iterations"]
-        num_agents = self.config["experiment"]["num_agents"]
 
         # Get baselines list
         baselines = self.config["experiment"].get("baseline_algo")
@@ -512,57 +573,67 @@ class Experiment:
         if isinstance(baselines, str):
             baselines = [baselines]
 
-        for baseline in baselines:
-            print(f"\nRunning {baseline} baseline evaluation...")
-            self.config["experiment"]["baseline_algo"] = baseline
-            sim = BaselineSimulation(self.config)
+        difficulties = self.config["experiment"]["difficulties"]
 
-            results = []
-            for i in range(eval_iterations):
-                episode_seed = base_seed + i
-                self.set_global_seeds(episode_seed)
-                sim.reset(seed=episode_seed)
+        for difficulty in difficulties:
+            print("\n==========================================")
+            print(f"Running Baseline Test with difficulty: {difficulty.upper()}")
+            print("==========================================")
+            self.config["experiment"]["current_difficulty"] = difficulty
 
-                metrics = sim.run_episode()
+            for baseline in baselines:
+                print(f"\nRunning {baseline} baseline evaluation...")
+                self.config["experiment"]["baseline_algo"] = baseline
+                sim = BaselineSimulation(self.config)
 
-                steps = metrics["steps"]
-                correct = metrics["correct"]
-                truncated = metrics["truncated"]
-                total_events = metrics["total_events"]
-                events_per_agent = metrics["events_per_agent"]
-                lambdas = metrics["lambdas"]
-                lambda_difficulty = np.round(
-                    (max(lambdas) - min(lambdas)) / max(lambdas), 3
+                results = []
+                for i in range(eval_iterations):
+                    episode_seed = base_seed + i
+                    self.set_global_seeds(episode_seed)
+                    sim.reset(seed=episode_seed)
+
+                    metrics = sim.run_episode()
+
+                    steps = metrics["steps"]
+                    correct = metrics["correct"]
+                    truncated = metrics["truncated"]
+                    total_events = metrics["total_events"]
+                    events_per_agent = metrics["events_per_agent"]
+                    lambdas = metrics["lambdas"]
+                    lambda_difficulty = np.round(
+                        (max(lambdas) - min(lambdas)) / max(lambdas), 3
+                    )
+
+                    results.append(metrics)
+
+                    self.metric_logger.info(
+                        f"{episode_seed},{steps},{correct},{total_events},"
+                        f"{events_per_agent:.3f},{lambda_difficulty},{truncated},{lambdas}"
+                    )
+
+                    outcome_str = metrics["outcome"].upper()
+                    print(
+                        f"Episode {i + 1:4d}/{eval_iterations} | {outcome_str:10s} | "
+                        f"Steps: {int(steps):>8,} | Events/Agent: {events_per_agent:6.1f} | "
+                        f"Lambdas: {[f'{l_val:.5f}' for l_val in lambdas]}"
+                    )
+
+                # --- Summary ---
+                success_rate = np.mean([r["correct"] for r in results]) * 100
+                trunc_rate = np.mean([r["truncated"] for r in results]) * 100
+                decided = [r for r in results if not r["truncated"]]
+                avg_steps = (
+                    np.mean([r["steps"] for r in decided]) if decided else float("nan")
                 )
+                avg_events = np.mean([r["events_per_agent"] for r in results])
 
-                results.append(metrics)
-
-                self.metric_logger.info(
-                    f"{episode_seed},{steps},{correct},{total_events},"
-                    f"{events_per_agent:.3f},{lambda_difficulty},{truncated},{lambdas}"
-                )
-
-                outcome_str = metrics["outcome"].upper()
-                print(
-                    f"Episode {i + 1:4d}/{eval_iterations} | {outcome_str:10s} | "
-                    f"Steps: {int(steps):>8,} | Events/Agent: {events_per_agent:6.1f} | "
-                    f"Lambdas: {[f'{l:.5f}' for l in lambdas]}"
-                )
-
-            # --- Summary ---
-            success_rate = np.mean([r["correct"] for r in results]) * 100
-            trunc_rate = np.mean([r["truncated"] for r in results]) * 100
-            decided = [r for r in results if not r["truncated"]]
-            avg_steps = np.mean([r["steps"] for r in decided]) if decided else float("nan")
-            avg_events = np.mean([r["events_per_agent"] for r in results])
-
-            print("\n" + "=" * 60)
-            print(f"{baseline} Baseline Summary")
-            print(f"  Success Rate      : {success_rate:.1f}%")
-            print(f"  Truncation Rate   : {trunc_rate:.1f}%")
-            print(f"  Avg Steps (decided): {avg_steps:,.0f}")
-            print(f"  Avg Events/Agent  : {avg_events:.1f}")
-            print("=" * 60)
+                print("\n" + "=" * 60)
+                print(f"{baseline} ({difficulty.upper()}) Baseline Summary")
+                print(f"  Success Rate      : {success_rate:.1f}%")
+                print(f"  Truncation Rate   : {trunc_rate:.1f}%")
+                print(f"  Avg Steps (decided): {avg_steps:,.0f}")
+                print(f"  Avg Events/Agent  : {avg_events:.1f}")
+                print("=" * 60)
 
     def extractFromLogits(self, logits):
         num_loc_actions = self.config["experiment"]["num_locations"] + 1

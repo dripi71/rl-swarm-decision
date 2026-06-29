@@ -14,7 +14,10 @@ class SwarmBase:
         if mode == "train":
             use_easy = np.random.random() < 0.5
         else:
-            use_easy = self.config["experiment"]["current_hardness"] == "easy"
+            current_diff = self.config["experiment"].get("current_difficulty")
+            if current_diff is None:
+                current_diff = self.config["experiment"].get("current_hardness", "easy")
+            use_easy = current_diff == "easy"
 
         red_lambda = (
             self.config["experiment"]["red_env_lambda_easy"]
