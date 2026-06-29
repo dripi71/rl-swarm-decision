@@ -132,7 +132,11 @@ search_space = {
 }
 
 if __name__ == "__main__":
-    ray.init(num_cpus=64)
+
+    with open(_CONFIG_PATH, "r") as f:
+        config = yaml.safe_load(f)
+    num_cpus = config["hardware"]["num_cpus"]
+    ray.init(num_cpus=num_cpus)
 
     scheduler = ASHAScheduler(
         metric="tuning_score",
